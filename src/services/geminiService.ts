@@ -1,8 +1,8 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 
 export class GeminiService {
   private ai: any;
-  private modelName: string = "gemini-3.1-pro-preview"; 
+  private modelName: string = "gemini-3-flash-preview"; 
 
   constructor(apiKey?: string) {
     // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio
@@ -44,6 +44,83 @@ export class GeminiService {
     }
   }
 
+  async *translateMedicalPageStream(imageBuffer: string, pageNumber: number): AsyncGenerator<string> {
+    // Re-check for key if not initialized (might have been selected via platform)
+    if (!this.ai) {
+      const envKey = process.env.GEMINI_API_KEY;
+      if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
+        this.ai = new GoogleGenAI({ apiKey: envKey });
+      }
+    }
+
+    if (!this.ai) {
+      throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
+    }
+
+    const systemInstruction = `
+      Dịch tài liệu y khoa (Nhãn khoa) sang tiếng Việt.
+      - Thuật ngữ: Chuẩn y khoa Việt Nam.
+      - Định dạng: Markdown (giữ tiêu đề, bảng, danh sách).
+      - Hình ảnh: Dịch chú thích (ví dụ: Fig 1.2).
+      - Chỉ trả về nội dung dịch. Không giải thích.
+    `;
+
+    const prompt = `Dịch trang ${pageNumber}`;
+
+    try {
+      const response = await this.ai.models.generateContentStream({
+        model: this.modelName,
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  mimeType: "image/jpeg",
+                  data: imageBuffer.split(",")[1],
+                },
+              },
+            ],
+          },
+        ],
+        config: {
+          systemInstruction: systemInstruction,
+          temperature: 0.1,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          safetySettings: [
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+          ]
+        }
+      });
+
+      let fullText = "";
+      for await (const chunk of response) {
+        const chunkText = chunk.text;
+        if (chunkText) {
+          fullText += chunkText;
+          yield chunkText;
+        }
+      }
+
+      if (!fullText) {
+        throw new Error("Model returned no text.");
+      }
+    } catch (error: any) {
+      console.error("Gemini Pro Streaming Error:", error);
+      
+      if (error.message?.includes("API key not valid")) {
+        throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
+      }
+      if (error.message?.includes("quota")) {
+        throw new Error("Hết hạn mức API (Quota exceeded). Vui lòng thử lại sau.");
+      }
+      throw new Error(`Lỗi dịch thuật: ${error.message || "Không rõ nguyên nhân"}`);
+    }
+  }
+
   async translateMedicalPage(imageBuffer: string, pageNumber: number): Promise<string> {
     // Re-check for key if not initialized (might have been selected via platform)
     if (!this.ai) {
@@ -58,18 +135,14 @@ export class GeminiService {
     }
 
     const systemInstruction = `
-      Bạn là một chuyên gia dịch thuật y khoa (Ophthalmology/Nhãn khoa) hàng đầu. 
-      Nhiệm vụ của bạn là dịch các trang tài liệu y khoa từ tiếng Anh sang tiếng Việt.
-      
-      QUY TẮC LÀM VIỆC:
-      1. Thuật ngữ chuyên môn: Sử dụng thuật ngữ y khoa chính xác, chuẩn xác theo y văn Việt Nam.
-      2. Hình ảnh & Sơ đồ: Các hình ảnh trong trang là ảnh chụp đáy mắt (fundus photos) hoặc sơ đồ khoa học. Hãy dịch các chú thích (captions) đi kèm (ví dụ: Fig 1.23).
-      3. Định dạng: Sử dụng Markdown để giữ nguyên cấu trúc trang (tiêu đề, đoạn văn, danh sách, bảng).
-      4. Ngôn ngữ: Chỉ trả về nội dung đã dịch sang tiếng Việt. Không giải thích thêm.
-      5. Độ chính xác: Đảm bảo dịch sát nghĩa các mô tả bệnh lý phức tạp.
+      Dịch tài liệu y khoa (Nhãn khoa) sang tiếng Việt.
+      - Thuật ngữ: Chuẩn y khoa Việt Nam.
+      - Định dạng: Markdown (giữ tiêu đề, bảng, danh sách).
+      - Hình ảnh: Dịch chú thích (ví dụ: Fig 1.2).
+      - Chỉ trả về nội dung dịch. Không giải thích.
     `;
 
-    const prompt = `Hãy dịch trang tài liệu y khoa này (Trang số ${pageNumber}). Tập trung vào việc chuyển ngữ chính xác các thuật ngữ chuyên môn và chú thích hình ảnh.`;
+    const prompt = `Dịch trang ${pageNumber}`;
 
     try {
       const response = await this.ai.models.generateContent({
@@ -89,7 +162,8 @@ export class GeminiService {
         ],
         config: {
           systemInstruction: systemInstruction,
-          temperature: 0.1, // Lower temperature for more consistent medical translation
+          temperature: 0.1,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           safetySettings: [
             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -99,59 +173,17 @@ export class GeminiService {
         }
       });
 
-      if (!response.text) {
-        // Fallback to a simpler model if Pro fails or returns empty
-        console.warn("Pro model returned no text, trying Flash model...");
-        return this.translateWithFlash(imageBuffer, pageNumber, systemInstruction);
-      }
-
-      return response.text;
+      return response.text || "Model returned no text.";
     } catch (error: any) {
-      console.error("Gemini Pro Translation Error:", error);
+      console.error("Gemini Translation Error:", error);
       
-      // If it's a safety block or other error, try Flash as fallback
-      try {
-        return await this.translateWithFlash(imageBuffer, pageNumber, systemInstruction);
-      } catch (fallbackError: any) {
-        if (error.message?.includes("API key not valid")) {
-          throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
-        }
-        if (error.message?.includes("quota")) {
-          throw new Error("Hết hạn mức API (Quota exceeded). Vui lòng thử lại sau.");
-        }
-        throw new Error(`Lỗi dịch thuật: ${fallbackError.message || error.message || "Không rõ nguyên nhân"}`);
+      if (error.message?.includes("API key not valid")) {
+        throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
       }
+      if (error.message?.includes("quota")) {
+        throw new Error("Hết hạn mức API (Quota exceeded). Vui lòng thử lại sau.");
+      }
+      throw new Error(`Lỗi dịch thuật: ${error.message || "Không rõ nguyên nhân"}`);
     }
-  }
-
-  private async translateWithFlash(imageBuffer: string, pageNumber: number, systemInstruction: string): Promise<string> {
-    const response = await this.ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [
-        {
-          parts: [
-            { text: `Dịch trang y khoa số ${pageNumber} sang tiếng Việt.` },
-            {
-              inlineData: {
-                mimeType: "image/jpeg",
-                data: imageBuffer.split(",")[1],
-              },
-            },
-          ],
-        },
-      ],
-      config: {
-        systemInstruction: systemInstruction,
-        temperature: 0.1,
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-        ]
-      }
-    });
-
-    return response.text || "Dịch thuật thất bại sau khi thử lại.";
   }
 }

@@ -28,7 +28,10 @@ import {
   RefreshCcw,
   ZoomIn,
   ZoomOut,
-  Maximize
+  Maximize,
+  Type,
+  ALargeSmall,
+  Type as FontIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -58,7 +61,8 @@ export default function App() {
   const [apiKey, setApiKey] = useState<string>(localStorage.getItem('gemini_api_key') || '');
   const [showSettings, setShowSettings] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const [zoom, setZoom] = useState(1.0);
+  const [zoom, setZoom] = useState(0.82); // Default to 82% as requested
+  const [isAutoFit, setIsAutoFit] = useState(true);
   
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -67,6 +71,9 @@ export default function App() {
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  
+  const [fontSize, setFontSize] = useState(14);
+  const [fontFamily, setFontFamily] = useState('Inter');
   
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   
@@ -92,6 +99,25 @@ export default function App() {
   useEffect(() => {
     geminiService.current = new GeminiService(apiKey);
   }, [apiKey]);
+
+  useEffect(() => {
+    if (pdfDoc) {
+      fitToWidth();
+    }
+  }, [pdfDoc]);
+
+  // Handle container resize to maintain fit-to-width if enabled
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !pdfDoc || !isAutoFit) return;
+
+    const observer = new ResizeObserver(() => {
+      fitToWidth();
+    });
+    
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [pdfDoc, isAutoFit, currentPage]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -172,13 +198,15 @@ export default function App() {
       if (e.ctrlKey || e.metaKey) {
         if (e.key === '=' || e.key === '+') {
           e.preventDefault();
+          setIsAutoFit(false);
           setZoom(z => Math.min(3, Number((z + 0.1).toFixed(1))));
         } else if (e.key === '-') {
           e.preventDefault();
+          setIsAutoFit(false);
           setZoom(z => Math.max(0.5, Number((z - 0.1).toFixed(1))));
         } else if (e.key === '0') {
           e.preventDefault();
-          setZoom(1.0);
+          fitToWidthAction();
         }
       }
     };
@@ -194,6 +222,7 @@ export default function App() {
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
+        setIsAutoFit(false);
         const delta = e.deltaY > 0 ? -0.1 : 0.1;
         setZoom(prev => {
           const next = Math.min(3, Math.max(0.5, prev + delta));
@@ -247,6 +276,11 @@ export default function App() {
     }
   };
 
+  const fitToWidthAction = () => {
+    setIsAutoFit(true);
+    fitToWidth();
+  };
+
   const translateCurrentPage = async () => {
     if (!canvasRef.current || !geminiService.current) return;
     
@@ -271,11 +305,20 @@ export default function App() {
 
     try {
       const imageBuffer = canvasRef.current.toDataURL('image/jpeg', 0.8);
-      const result = await geminiService.current.translateMedicalPage(imageBuffer, currentPage);
+      const stream = geminiService.current.translateMedicalPageStream(imageBuffer, currentPage);
+      
+      let fullContent = "";
+      for await (const chunk of stream) {
+        fullContent += chunk;
+        setTranslations(prev => ({
+          ...prev,
+          [currentPage]: { content: fullContent, status: 'loading' }
+        }));
+      }
       
       setTranslations(prev => ({
         ...prev,
-        [currentPage]: { content: result, status: 'success' }
+        [currentPage]: { content: fullContent, status: 'success' }
       }));
     } catch (error: any) {
       console.error("Translation Error:", error);
@@ -343,7 +386,11 @@ export default function App() {
           
           <button 
             onClick={() => setIsFullScreen(!isFullScreen)}
-            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-600"
+            className={cn(
+              "p-2 rounded-full transition-all",
+              isFullScreen ? "bg-indigo-600 text-white shadow-lg" : "hover:bg-slate-100 text-slate-600"
+            )}
+            title={isFullScreen ? "Thoát chế độ tập trung (Hiện bản dịch)" : "Chế độ tập trung (Ẩn bản dịch)"}
           >
             {isFullScreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
           </button>
@@ -407,12 +454,18 @@ export default function App() {
             </motion.div>
           </div>
         ) : (
-          <div className="flex-1 flex divide-x divide-slate-200 min-h-0 w-full overflow-hidden">
+          <div className="flex-1 flex divide-x divide-slate-200 min-h-0 w-full overflow-hidden relative">
             {/* Left Side: Original PDF */}
-            <div className="w-1/2 flex flex-col bg-slate-200/50 overflow-hidden border-r border-slate-200">
+            <div className={cn(
+              "flex flex-col bg-slate-200/50 overflow-hidden border-r border-slate-200 transition-all duration-300 ease-in-out",
+              isFullScreen ? "w-full" : "w-1/2"
+            )}>
               <div className="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0 z-20 shadow-sm">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Original PDF</span>
+                  {isFullScreen && (
+                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-600 text-[10px] font-bold rounded-full uppercase tracking-tighter">Focus Mode</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1">
@@ -461,7 +514,10 @@ export default function App() {
                     </button>
                     <div className="w-px h-3 bg-slate-300 mx-0.5" />
                     <button 
-                      onClick={() => setZoom(z => Math.max(0.5, z - 0.1))} 
+                      onClick={() => {
+                        setIsAutoFit(false);
+                        setZoom(z => Math.max(0.5, z - 0.1));
+                      }} 
                       className="p-1 hover:bg-white hover:shadow-sm rounded transition-all text-slate-600"
                       title="Thu nhỏ (Ctrl + Cuộn chuột)"
                     >
@@ -471,16 +527,22 @@ export default function App() {
                       {Math.round(zoom * 100)}%
                     </span>
                     <button 
-                      onClick={() => setZoom(z => Math.min(3, z + 0.1))} 
+                      onClick={() => {
+                        setIsAutoFit(false);
+                        setZoom(z => Math.min(3, z + 0.1));
+                      }} 
                       className="p-1 hover:bg-white hover:shadow-sm rounded transition-all text-slate-600"
                       title="Phóng to (Ctrl + Cuộn chuột)"
                     >
                       <ZoomIn className="w-4 h-4" />
                     </button>
                     <button 
-                      onClick={fitToWidth} 
-                      className="p-1 hover:bg-white hover:shadow-sm rounded transition-all text-slate-600 ml-1"
-                      title="Vừa khít chiều rộng"
+                      onClick={fitToWidthAction} 
+                      className={cn(
+                        "p-1 rounded transition-all ml-1",
+                        isAutoFit ? "bg-indigo-600 text-white shadow-sm" : "hover:bg-white text-slate-600"
+                      )}
+                      title="Vừa khít chiều rộng (Tự động)"
                     >
                       <Maximize className="w-3.5 h-3.5" />
                     </button>
@@ -532,11 +594,51 @@ export default function App() {
             </div>
 
             {/* Right Side: Translation */}
-            <div className="w-1/2 flex flex-col bg-white overflow-hidden">
-              <div className="h-12 border-b border-slate-200 flex items-center justify-between px-4 shrink-0 z-20 shadow-sm">
-                <div className="flex items-center gap-2">
+            {!isFullScreen && (
+              <motion.div 
+                initial={{ x: 300, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: 300, opacity: 0 }}
+                className="w-1/2 flex flex-col bg-white overflow-hidden"
+              >
+                <div className="h-12 border-b border-slate-200 flex items-center justify-between px-4 shrink-0 z-20 shadow-sm">
+                <div className="flex items-center gap-4">
                   <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest">Vietnamese Translation</span>
+                  
+                  <div className="h-4 w-px bg-slate-200" />
+                  
+                  <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-1">
+                    <div className="flex items-center gap-1">
+                      <FontIcon className="w-3.5 h-3.5 text-slate-400" />
+                      <select 
+                        value={fontFamily}
+                        onChange={(e) => setFontFamily(e.target.value)}
+                        className="text-[10px] font-bold bg-transparent border-none focus:ring-0 cursor-pointer text-slate-600"
+                      >
+                        <option value="Inter">Sans (Inter)</option>
+                        <option value="Cormorant Garamond">Serif (Garamond)</option>
+                        <option value="Playfair Display">Display (Playfair)</option>
+                        <option value="JetBrains Mono">Mono (JetBrains)</option>
+                      </select>
+                    </div>
+                    
+                    <div className="w-px h-3 bg-slate-200 mx-1" />
+                    
+                    <div className="flex items-center gap-1">
+                      <ALargeSmall className="w-3.5 h-3.5 text-slate-400" />
+                      <select 
+                        value={fontSize}
+                        onChange={(e) => setFontSize(Number(e.target.value))}
+                        className="text-[10px] font-bold bg-transparent border-none focus:ring-0 cursor-pointer text-slate-600"
+                      >
+                        {[12, 13, 14, 15, 16, 18, 20].map(size => (
+                          <option key={size} value={size}>{size}px</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
+                
                 <div className="flex items-center gap-2">
                   {translations[currentPage]?.status === 'success' && (
                     <button className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700">
@@ -593,7 +695,7 @@ export default function App() {
                       <p className="text-sm font-medium">Chưa có bản dịch cho trang này.</p>
                       <p className="text-xs">Nhấn "Dịch trang này" để bắt đầu.</p>
                     </motion.div>
-                  ) : translations[currentPage].status === 'loading' ? (
+                  ) : translations[currentPage].status === 'loading' && !translations[currentPage].content ? (
                     <motion.div 
                       key="loading"
                       initial={{ opacity: 0 }}
@@ -652,6 +754,14 @@ export default function App() {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       className="markdown-body"
+                      style={{ 
+                        fontSize: `${fontSize}px`,
+                        fontFamily: fontFamily === 'Inter' ? 'var(--font-sans)' : 
+                                   fontFamily === 'JetBrains Mono' ? 'var(--font-mono)' : 
+                                   fontFamily === 'Playfair Display' ? 'var(--font-display)' :
+                                   fontFamily === 'Cormorant Garamond' ? 'var(--font-serif)' :
+                                   fontFamily
+                      }}
                     >
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {translations[currentPage].content}
@@ -660,10 +770,11 @@ export default function App() {
                   )}
                 </AnimatePresence>
               </div>
-            </div>
-          </div>
-        )}
-      </main>
+            </motion.div>
+          )}
+        </div>
+      )}
+    </main>
 
       {/* Settings Modal */}
       <AnimatePresence>
