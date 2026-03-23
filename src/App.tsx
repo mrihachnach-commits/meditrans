@@ -6,6 +6,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { getDocument, GlobalWorkerOptions, version as pdfjsVersion } from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { PDFDocument } from 'pdf-lib';
 
 // Use a reliable CDN for the worker that matches the installed version exactly
 GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
@@ -57,10 +58,75 @@ export default function App() {
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [translations, setTranslations] = useState<TranslationState>({});
+  const translationsRef = useRef<TranslationState>({});
+  const translatingPagesRef = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    translationsRef.current = translations;
+  }, [translations]);
+
+  const [currentJob, setCurrentJob] = useState(1);
+  const PAGES_PER_JOB = 100;
+  const pdfJobsRef = useRef<Uint8Array[]>([]);
+  const [isSplitting, setIsSplitting] = useState(false);
+  const totalJobs = Math.ceil(numPages / PAGES_PER_JOB);
+
+  const loadJob = async (jobIndex: number) => {
+    const jobData = pdfJobsRef.current[jobIndex - 1];
+    if (!jobData) return;
+
+    setIsPdfLoading(true);
+    try {
+      if (pdfDoc) {
+        await pdfDoc.destroy();
+      }
+      const loadingTask = getDocument({ data: jobData });
+      const pdf = await loadingTask.promise;
+      setPdfDoc(pdf);
+    } catch (error) {
+      console.error("Error loading job:", error);
+      setPdfError(`Lỗi khi tải phần ${jobIndex}.`);
+    } finally {
+      setIsPdfLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (numPages > 0) {
+      const newJob = Math.ceil(currentPage / PAGES_PER_JOB);
+      if (newJob !== currentJob) {
+        setCurrentJob(newJob);
+        loadJob(newJob);
+      }
+    }
+  }, [currentPage, numPages, currentJob]);
+
   const [isTranslating, setIsTranslating] = useState(false);
-  const [apiKey, setApiKey] = useState<string>(localStorage.getItem('gemini_api_key') || '');
+  const [apiKey, setApiKey] = useState<string>(() => {
+    const saved = localStorage.getItem('gemini_api_key');
+    if (saved) return saved;
+    // Check if environment key is not a placeholder
+    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
+      return envKey;
+    }
+    return '';
+  });
   const [showSettings, setShowSettings] = useState(false);
+  const [hasEnvKey, setHasEnvKey] = useState(false);
+
+  useEffect(() => {
+    const checkKey = async () => {
+      if (geminiService.current) {
+        const hasKey = await geminiService.current.hasApiKey();
+        setHasEnvKey(hasKey);
+      }
+    };
+    checkKey();
+  }, [apiKey]);
+
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [autoTranslate, setAutoTranslate] = useState(true);
   const [zoom, setZoom] = useState(0.82); // Default to 82% as requested
   const [isAutoFit, setIsAutoFit] = useState(true);
   
@@ -70,6 +136,7 @@ export default function App() {
 
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
+  const isRenderingRef = useRef(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   
   const [fontSize, setFontSize] = useState(14);
@@ -84,8 +151,11 @@ export default function App() {
     setPdfDoc(null);
     setNumPages(0);
     setCurrentPage(1);
+    setCurrentJob(1);
+    pdfJobsRef.current = [];
     setTranslations({});
     setPdfError(null);
+    isRenderingRef.current = false;
     if (renderTaskRef.current) {
       renderTaskRef.current.cancel();
     }
@@ -95,6 +165,206 @@ export default function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<any>(null);
   const geminiService = useRef<GeminiService | null>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile && selectedFile.type === 'application/pdf') {
+      setFile(selectedFile);
+      setTranslations({});
+      setCurrentPage(1);
+      setCurrentJob(1);
+      setIsPdfLoading(true);
+      setPdfError(null);
+      pdfJobsRef.current = [];
+      
+      try {
+        const arrayBuffer = await selectedFile.arrayBuffer();
+        
+        // Use pdf-lib to split the PDF if it's large
+        setIsSplitting(true);
+        const mainPdfDoc = await PDFDocument.load(arrayBuffer);
+        const totalPageCount = mainPdfDoc.getPageCount();
+        setNumPages(totalPageCount);
+
+        if (totalPageCount > PAGES_PER_JOB) {
+          const jobs: Uint8Array[] = [];
+          for (let i = 0; i < totalPageCount; i += PAGES_PER_JOB) {
+            const newDoc = await PDFDocument.create();
+            const end = Math.min(i + PAGES_PER_JOB, totalPageCount);
+            const indices = Array.from({ length: end - i }, (_, k) => i + k);
+            const copiedPages = await newDoc.copyPages(mainPdfDoc, indices);
+            copiedPages.forEach(page => newDoc.addPage(page));
+            const pdfBytes = await newDoc.save();
+            jobs.push(pdfBytes);
+          }
+          pdfJobsRef.current = jobs;
+        } else {
+          pdfJobsRef.current = [new Uint8Array(arrayBuffer)];
+        }
+        setIsSplitting(false);
+
+        // Load the first job into PDF.js
+        await loadJob(1);
+      } catch (error) {
+        console.error("Error loading PDF:", error);
+        setPdfError("Không thể tải file PDF. Vui lòng thử lại.");
+      } finally {
+        setIsPdfLoading(false);
+        setIsSplitting(false);
+      }
+    }
+  };
+
+  const renderPage = useCallback(async (globalPageNum: number) => {
+    if (!pdfDoc || !canvasRef.current) return;
+
+    // Map global page to local job page
+    const localPageNum = (globalPageNum - 1) % PAGES_PER_JOB + 1;
+
+    setIsRendering(true);
+    isRenderingRef.current = true;
+    // Cancel previous render task if any
+    if (renderTaskRef.current) {
+      renderTaskRef.current.cancel();
+    }
+
+    try {
+      const page = await pdfDoc.getPage(localPageNum);
+      const viewport = page.getViewport({ scale: zoom * 2 });
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+
+      if (context) {
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        
+        // Scale canvas style back to logical size for high-DPI display
+        canvas.style.width = `${viewport.width / 2}px`;
+        canvas.style.height = `${viewport.height / 2}px`;
+
+        const renderContext = {
+          canvasContext: context,
+          viewport: viewport,
+        };
+        
+        const renderTask = page.render(renderContext as any);
+        renderTaskRef.current = renderTask;
+        await renderTask.promise;
+        
+        // Free up memory
+        page.cleanup();
+      }
+    } catch (error: any) {
+      if (error.name === 'RenderingCancelledException') {
+        // Ignore cancellation
+      } else {
+        console.error("Error rendering page:", error);
+        setPdfError("Không thể hiển thị trang này. Vui lòng thử lại.");
+      }
+    } finally {
+      setIsRendering(false);
+      isRenderingRef.current = false;
+    }
+  }, [pdfDoc, zoom]);
+
+  const fitToWidth = async () => {
+    if (!pdfDoc || !containerRef.current) return;
+    
+    // Use requestAnimationFrame to ensure layout has settled
+    requestAnimationFrame(async () => {
+      if (!pdfDoc || !containerRef.current) return;
+      try {
+        const localPageNum = (currentPage - 1) % PAGES_PER_JOB + 1;
+        const page = await pdfDoc.getPage(localPageNum);
+        const viewport = page.getViewport({ scale: 1 });
+        // Use getBoundingClientRect for more accurate width calculation
+        const rect = containerRef.current.getBoundingClientRect();
+        const containerWidth = rect.width - 64; // account for padding (p-8 = 32px each side)
+        const newZoom = containerWidth / viewport.width;
+        setZoom(Number(newZoom.toFixed(2)));
+        page.cleanup();
+      } catch (error) {
+        console.error("Error fitting to width:", error);
+      }
+    });
+  };
+
+  const fitToWidthAction = () => {
+    setIsAutoFit(true);
+    fitToWidth();
+  };
+
+  const translateCurrentPage = useCallback(async (pageNumber?: number, force = false) => {
+    const targetPage = pageNumber ?? currentPage;
+    if (!canvasRef.current || !geminiService.current) return;
+
+    // Avoid double translation for the same page unless forced
+    const currentStatus = translationsRef.current[targetPage]?.status;
+    if (!force && (translatingPagesRef.current.has(targetPage) || (currentStatus === 'loading' || currentStatus === 'success'))) {
+      return;
+    }
+
+    // If still rendering, we don't want to capture a half-rendered or old page
+    if (isRenderingRef.current) {
+      // Retry after a short delay
+      setTimeout(() => translateCurrentPage(targetPage, force), 500);
+      return;
+    }
+    
+    // Check if we have an API key before starting
+    const hasKey = await geminiService.current.hasApiKey();
+    if (!hasKey) {
+      setTranslations(prev => ({
+        ...prev,
+        [targetPage]: { 
+          content: 'Thiếu API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn từ hệ thống.', 
+          status: 'error' 
+        }
+      }));
+      return;
+    }
+
+    translatingPagesRef.current.add(targetPage);
+    setIsTranslating(true);
+    setTranslations(prev => ({
+      ...prev,
+      [targetPage]: { content: '', status: 'loading' }
+    }));
+
+    try {
+      // Small delay to ensure canvas is fully ready and stable
+      await new Promise(resolve => setTimeout(resolve, 200));
+      const imageBuffer = canvasRef.current.toDataURL('image/jpeg', 0.8);
+      const stream = geminiService.current.translateMedicalPageStream(imageBuffer, targetPage);
+      
+      let fullContent = "";
+      for await (const chunk of stream) {
+        fullContent += chunk;
+        setTranslations(prev => ({
+          ...prev,
+          [targetPage]: { content: fullContent, status: 'loading' }
+        }));
+      }
+      
+      setTranslations(prev => ({
+        ...prev,
+        [targetPage]: { content: fullContent, status: 'success' }
+      }));
+    } catch (error: any) {
+      console.error("Translation Error:", error);
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : (typeof error === 'string' ? error : 'Dịch thuật thất bại. Vui lòng kiểm tra API Key hoặc kết nối mạng.');
+      
+      setTranslations(prev => ({
+        ...prev,
+        [targetPage]: { content: errorMessage, status: 'error' }
+      }));
+    } finally {
+      translatingPagesRef.current.delete(targetPage);
+      setIsTranslating(false);
+    }
+  }, [currentPage, geminiService]);
 
   useEffect(() => {
     geminiService.current = new GeminiService(apiKey);
@@ -119,73 +389,17 @@ export default function App() {
     return () => observer.disconnect();
   }, [pdfDoc, isAutoFit, currentPage]);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile && selectedFile.type === 'application/pdf') {
-      if (selectedFile.size > 200 * 1024 * 1024) {
-        alert("File quá lớn. Vui lòng chọn file dưới 200MB.");
-        return;
-      }
-      setFile(selectedFile);
-      setTranslations({});
-      setCurrentPage(1);
-      setIsPdfLoading(true);
-      
-      try {
-        const url = URL.createObjectURL(selectedFile);
-        setFileUrl(url);
-        const loadingTask = getDocument(url);
-        const pdf = await loadingTask.promise;
-        setPdfDoc(pdf);
-        setNumPages(pdf.numPages);
-      } catch (error) {
-        console.error("Error loading PDF:", error);
-        alert("Không thể tải file PDF. Vui lòng thử lại.");
-      } finally {
-        setIsPdfLoading(false);
-      }
+  useEffect(() => {
+    if (pdfDoc && autoTranslate && !isRendering && !translations[currentPage]) {
+      const timer = setTimeout(() => {
+        // Re-check conditions after delay
+        if (!isRenderingRef.current && !translationsRef.current[currentPage]) {
+          translateCurrentPage(currentPage);
+        }
+      }, 500);
+      return () => clearTimeout(timer);
     }
-  };
-
-  const renderPage = useCallback(async (pageNum: number) => {
-    if (!pdfDoc || !canvasRef.current) return;
-
-    setIsRendering(true);
-    // Cancel previous render task if any
-    if (renderTaskRef.current) {
-      renderTaskRef.current.cancel();
-    }
-
-    try {
-      const page = await pdfDoc.getPage(pageNum);
-      const viewport = page.getViewport({ scale: zoom * 2 });
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-
-      if (context) {
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-
-        const renderContext = {
-          canvasContext: context,
-          viewport: viewport,
-        };
-        
-        const renderTask = page.render(renderContext as any);
-        renderTaskRef.current = renderTask;
-        await renderTask.promise;
-      }
-    } catch (error: any) {
-      if (error.name === 'RenderingCancelledException') {
-        // Ignore cancellation
-      } else {
-        console.error("Error rendering page:", error);
-        setPdfError("Không thể hiển thị trang này. Vui lòng thử lại.");
-      }
-    } finally {
-      setIsRendering(false);
-    }
-  }, [pdfDoc, zoom]);
+  }, [currentPage, pdfDoc, autoTranslate, isRendering, translations, translateCurrentPage]);
 
   useEffect(() => {
     if (pdfDoc) {
@@ -260,78 +474,6 @@ export default function App() {
     setIsDragging(false);
     if (containerRef.current) {
       containerRef.current.style.cursor = isPanning ? 'grab' : 'auto';
-    }
-  };
-
-  const fitToWidth = async () => {
-    if (!pdfDoc || !containerRef.current) return;
-    try {
-      const page = await pdfDoc.getPage(currentPage);
-      const viewport = page.getViewport({ scale: 1 });
-      const containerWidth = containerRef.current.clientWidth - 64; // account for padding
-      const newZoom = containerWidth / viewport.width;
-      setZoom(Number(newZoom.toFixed(2)));
-    } catch (error) {
-      console.error("Error fitting to width:", error);
-    }
-  };
-
-  const fitToWidthAction = () => {
-    setIsAutoFit(true);
-    fitToWidth();
-  };
-
-  const translateCurrentPage = async () => {
-    if (!canvasRef.current || !geminiService.current) return;
-    
-    // Check if we have an API key before starting
-    const hasKey = await geminiService.current.hasApiKey();
-    if (!hasKey) {
-      setTranslations(prev => ({
-        ...prev,
-        [currentPage]: { 
-          content: 'Thiếu API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn từ hệ thống.', 
-          status: 'error' 
-        }
-      }));
-      return;
-    }
-
-    setIsTranslating(true);
-    setTranslations(prev => ({
-      ...prev,
-      [currentPage]: { content: '', status: 'loading' }
-    }));
-
-    try {
-      const imageBuffer = canvasRef.current.toDataURL('image/jpeg', 0.8);
-      const stream = geminiService.current.translateMedicalPageStream(imageBuffer, currentPage);
-      
-      let fullContent = "";
-      for await (const chunk of stream) {
-        fullContent += chunk;
-        setTranslations(prev => ({
-          ...prev,
-          [currentPage]: { content: fullContent, status: 'loading' }
-        }));
-      }
-      
-      setTranslations(prev => ({
-        ...prev,
-        [currentPage]: { content: fullContent, status: 'success' }
-      }));
-    } catch (error: any) {
-      console.error("Translation Error:", error);
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : (typeof error === 'string' ? error : 'Dịch thuật thất bại. Vui lòng kiểm tra API Key hoặc kết nối mạng.');
-      
-      setTranslations(prev => ({
-        ...prev,
-        [currentPage]: { content: errorMessage, status: 'error' }
-      }));
-    } finally {
-      setIsTranslating(false);
     }
   };
 
@@ -445,19 +587,13 @@ export default function App() {
                   <span className="text-xs font-medium uppercase tracking-wider">Tốc Độ Cao</span>
                 </div>
               </div>
-
-              <div className="mt-12 p-5 bg-amber-50 rounded-2xl border border-amber-100 max-w-md mx-auto">
-                <p className="text-xs text-amber-700 leading-relaxed">
-                  <span className="font-bold">Lưu ý cho file lớn:</span> Với các tài liệu trên 100 trang (như file 900 trang bạn đề cập), trình duyệt có thể bị quá tải. Để có trải nghiệm tốt nhất, bạn nên tách file thành các phần nhỏ (khoảng 50-100 trang mỗi file) trước khi tải lên.
-                </p>
-              </div>
             </motion.div>
           </div>
         ) : (
           <div className="flex-1 flex divide-x divide-slate-200 min-h-0 w-full overflow-hidden relative">
             {/* Left Side: Original PDF */}
             <div className={cn(
-              "flex flex-col bg-slate-200/50 overflow-hidden border-r border-slate-200 transition-all duration-300 ease-in-out",
+              "flex flex-col bg-slate-200/50 overflow-hidden border-r border-slate-200 transition-all duration-300 ease-in-out relative",
               isFullScreen ? "w-full" : "w-1/2"
             )}>
               <div className="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0 z-20 shadow-sm">
@@ -468,6 +604,26 @@ export default function App() {
                   )}
                 </div>
                 <div className="flex items-center gap-4">
+                  {totalJobs > 1 && (
+                    <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-2 py-1 border border-slate-200">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Phần (Job):</span>
+                      <select 
+                        value={currentJob}
+                        onChange={(e) => {
+                          const job = parseInt(e.target.value);
+                          setCurrentJob(job);
+                          setCurrentPage((job - 1) * PAGES_PER_JOB + 1);
+                        }}
+                        className="h-6 text-[10px] font-bold border-none rounded bg-white px-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm"
+                      >
+                        {Array.from({ length: totalJobs }, (_, i) => i + 1).map(job => (
+                          <option key={job} value={job}>
+                            {job} ({ (job-1)*PAGES_PER_JOB + 1 } - { Math.min(job*PAGES_PER_JOB, numPages) })
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="flex items-center gap-1">
                     <button 
                       onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -567,10 +723,13 @@ export default function App() {
                 onMouseLeave={handleMouseUp}
               >
                 <div className="min-w-full min-h-full flex">
-                  <div className="relative m-auto">
-                    {(isPdfLoading || isRendering) && (
+                  <div className="relative m-auto my-8">
+                    {(isPdfLoading || isRendering || isSplitting) && (
                       <div className="absolute inset-0 flex items-center justify-center bg-slate-200/30 z-10 rounded-lg">
-                        <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
+                        <div className="flex flex-col items-center gap-2">
+                          <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
+                          {isSplitting && <span className="text-xs font-bold text-indigo-600">Đang tối ưu hóa tài liệu lớn...</span>}
+                        </div>
                       </div>
                     )}
                     {pdfError && (
@@ -605,6 +764,25 @@ export default function App() {
                 <div className="flex items-center gap-4">
                   <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest">Vietnamese Translation</span>
                   
+                  <div className="h-4 w-px bg-slate-200" />
+                  
+                  <button 
+                    onClick={() => setAutoTranslate(!autoTranslate)}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-1 rounded-full transition-all border",
+                      autoTranslate 
+                        ? "bg-emerald-50 border-emerald-200 text-emerald-600" 
+                        : "bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600"
+                    )}
+                    title="Tự động dịch khi chuyển trang"
+                  >
+                    <div className={cn(
+                      "w-2 h-2 rounded-full",
+                      autoTranslate ? "bg-emerald-500 animate-pulse" : "bg-slate-300"
+                    )} />
+                    <span className="text-[10px] font-bold uppercase tracking-tight">Auto-Translate</span>
+                  </button>
+
                   <div className="h-4 w-px bg-slate-200" />
                   
                   <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-1">
@@ -646,35 +824,35 @@ export default function App() {
                     </button>
                   )}
                   <button 
-                    onClick={translateCurrentPage}
-                    disabled={isTranslating}
+                    onClick={() => translateCurrentPage(currentPage, true)}
+                    disabled={isTranslating || isRendering}
                     className={cn(
                       "px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-2",
-                      isTranslating 
+                      (isTranslating || isRendering)
                         ? "bg-slate-100 text-slate-400 cursor-not-allowed" 
                         : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200"
                     )}
                   >
-                    {isTranslating ? (
+                    {isTranslating || isRendering ? (
                       <>
                         <Loader2 className="w-3 h-3 animate-spin" />
-                        Đang dịch...
+                        {isRendering ? 'Đang vẽ trang...' : 'Đang dịch...'}
                       </>
                     ) : (
                       <>
                         <Languages className="w-3 h-3" />
-                        Dịch trang này
+                        {translations[currentPage] ? 'Dịch lại' : 'Dịch trang này'}
                       </>
                     )}
                   </button>
-                  {!apiKey && !process.env.GEMINI_API_KEY && (
+                  {!apiKey && !hasEnvKey && (
                     <div className="absolute top-full right-0 mt-2 p-3 bg-rose-50 border border-rose-100 rounded-xl shadow-xl z-50 w-64">
                       <div className="flex gap-2 text-rose-600 mb-1">
                         <AlertCircle className="w-4 h-4 shrink-0" />
                         <span className="text-[10px] font-bold uppercase">Thiếu API Key</span>
                       </div>
                       <p className="text-[10px] text-rose-500 leading-tight">
-                        Bạn đang mở ứng dụng ở cửa sổ mới. Vui lòng nhập API Key trong phần Cài đặt để tiếp tục dịch.
+                        Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống để tiếp tục dịch.
                       </p>
                     </div>
                   )}
@@ -684,17 +862,31 @@ export default function App() {
               <div className="flex-1 overflow-auto p-12 bg-white">
                 <AnimatePresence mode="wait">
                   {!translations[currentPage] ? (
-                    <motion.div 
-                      key="empty"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="h-full flex flex-col items-center justify-center text-slate-400 text-center"
-                    >
-                      <Search className="w-12 h-12 mb-4 opacity-20" />
-                      <p className="text-sm font-medium">Chưa có bản dịch cho trang này.</p>
-                      <p className="text-xs">Nhấn "Dịch trang này" để bắt đầu.</p>
-                    </motion.div>
+                    (isRendering || isPdfLoading) ? (
+                      <motion.div 
+                        key="rendering"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="h-full flex flex-col items-center justify-center text-slate-400 text-center"
+                      >
+                        <Loader2 className="w-12 h-12 mb-4 text-indigo-400 animate-spin" />
+                        <p className="text-sm font-medium">Đang chuẩn bị trang...</p>
+                        <p className="text-xs">Vui lòng đợi trong giây lát</p>
+                      </motion.div>
+                    ) : (
+                      <motion.div 
+                        key="empty"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="h-full flex flex-col items-center justify-center text-slate-400 text-center"
+                      >
+                        <Search className="w-12 h-12 mb-4 opacity-20" />
+                        <p className="text-sm font-medium">Chưa có bản dịch cho trang này.</p>
+                        <p className="text-xs">Nhấn "Dịch trang này" để bắt đầu.</p>
+                      </motion.div>
+                    )
                   ) : translations[currentPage].status === 'loading' && !translations[currentPage].content ? (
                     <motion.div 
                       key="loading"
@@ -733,7 +925,7 @@ export default function App() {
                           <button 
                             onClick={async () => {
                               await geminiService.current?.openKeySelection();
-                              translateCurrentPage();
+                              translateCurrentPage(currentPage, true);
                             }}
                             className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
                           >
@@ -741,7 +933,7 @@ export default function App() {
                           </button>
                         )}
                         <button 
-                          onClick={translateCurrentPage}
+                          onClick={() => translateCurrentPage(currentPage, true)}
                           className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 transition-colors"
                         >
                           Thử lại

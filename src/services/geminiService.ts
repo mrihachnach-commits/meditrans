@@ -6,7 +6,7 @@ export class GeminiService {
 
   constructor(apiKey?: string) {
     // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio
-    const envKey = process.env.GEMINI_API_KEY;
+    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
     const key = (apiKey && apiKey.trim() !== "") ? apiKey : envKey;
     
     // Check if it's a valid key and not a placeholder
@@ -27,7 +27,14 @@ export class GeminiService {
     
     // Check if platform has a selected key
     if (typeof window !== 'undefined' && (window as any).aistudio?.hasSelectedApiKey) {
-      return await (window as any).aistudio.hasSelectedApiKey();
+      const hasSelected = await (window as any).aistudio.hasSelectedApiKey();
+      if (hasSelected) return true;
+    }
+
+    // Check environment key again (might have been updated)
+    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
+      return true;
     }
     
     return false;
@@ -37,7 +44,7 @@ export class GeminiService {
     if (typeof window !== 'undefined' && (window as any).aistudio?.openSelectKey) {
       await (window as any).aistudio.openSelectKey();
       // After selection, we might need to re-initialize
-      const envKey = process.env.GEMINI_API_KEY;
+      const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
       if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
         this.ai = new GoogleGenAI({ apiKey: envKey });
       }
@@ -47,7 +54,7 @@ export class GeminiService {
   async *translateMedicalPageStream(imageBuffer: string, pageNumber: number): AsyncGenerator<string> {
     // Re-check for key if not initialized (might have been selected via platform)
     if (!this.ai) {
-      const envKey = process.env.GEMINI_API_KEY;
+      const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
       if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
         this.ai = new GoogleGenAI({ apiKey: envKey });
       }
@@ -58,14 +65,21 @@ export class GeminiService {
     }
 
     const systemInstruction = `
-      Dịch tài liệu y khoa (Nhãn khoa) sang tiếng Việt.
-      - Thuật ngữ: Chuẩn y khoa Việt Nam.
-      - Định dạng: Markdown (giữ tiêu đề, bảng, danh sách).
-      - Hình ảnh: Dịch chú thích (ví dụ: Fig 1.2).
-      - Chỉ trả về nội dung dịch. Không giải thích.
+      Bạn là một chuyên gia dịch thuật y khoa cao cấp, chuyên ngành Nhãn khoa (Ophthalmology).
+      Nhiệm vụ của bạn là dịch hình ảnh trang tài liệu y khoa được cung cấp sang tiếng Việt.
+      
+      YÊU CẦU BẮT BUỘC:
+      1. Dịch SÁT NGHĨA, ĐẦY ĐỦ và CHÍNH XÁC toàn bộ văn bản trong hình ảnh. Không được bỏ sót bất kỳ đoạn văn, tiêu đề hay chú thích nào.
+      2. Sử dụng thuật ngữ y khoa Nhãn khoa chuẩn Việt Nam (ví dụ: "Retina" -> "Võng mạc", "Glaucoma" -> "Cườm nước/Glôcôm", "Cataract" -> "Đục thủy tinh thể").
+      3. Giữ nguyên định dạng Markdown:
+         - Sử dụng các cấp độ tiêu đề (#, ##, ###) tương ứng với tài liệu gốc.
+         - Giữ nguyên cấu trúc bảng (tables), danh sách (lists), và các đoạn văn.
+         - Dịch chú thích hình ảnh (ví dụ: "Figure 1.1" -> "Hình 1.1").
+      4. KHÔNG thêm lời dẫn, không giải thích, không nhận xét. Chỉ trả về nội dung đã được dịch.
+      5. Nếu có các ký hiệu đặc biệt hoặc công thức, hãy giữ nguyên hoặc trình bày lại một cách dễ hiểu nhất trong Markdown.
     `;
 
-    const prompt = `Dịch trang ${pageNumber}`;
+    const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa chuyên ngành Nhãn khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
 
     try {
       const response = await this.ai.models.generateContentStream({
@@ -124,7 +138,7 @@ export class GeminiService {
   async translateMedicalPage(imageBuffer: string, pageNumber: number): Promise<string> {
     // Re-check for key if not initialized (might have been selected via platform)
     if (!this.ai) {
-      const envKey = process.env.GEMINI_API_KEY;
+      const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
       if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
         this.ai = new GoogleGenAI({ apiKey: envKey });
       }
@@ -135,14 +149,21 @@ export class GeminiService {
     }
 
     const systemInstruction = `
-      Dịch tài liệu y khoa (Nhãn khoa) sang tiếng Việt.
-      - Thuật ngữ: Chuẩn y khoa Việt Nam.
-      - Định dạng: Markdown (giữ tiêu đề, bảng, danh sách).
-      - Hình ảnh: Dịch chú thích (ví dụ: Fig 1.2).
-      - Chỉ trả về nội dung dịch. Không giải thích.
+      Bạn là một chuyên gia dịch thuật y khoa cao cấp, chuyên ngành Nhãn khoa (Ophthalmology).
+      Nhiệm vụ của bạn là dịch hình ảnh trang tài liệu y khoa được cung cấp sang tiếng Việt.
+      
+      YÊU CẦU BẮT BUỘC:
+      1. Dịch SÁT NGHĨA, ĐẦY ĐỦ và CHÍNH XÁC toàn bộ văn bản trong hình ảnh. Không được bỏ sót bất kỳ đoạn văn, tiêu đề hay chú thích nào.
+      2. Sử dụng thuật ngữ y khoa Nhãn khoa chuẩn Việt Nam (ví dụ: "Retina" -> "Võng mạc", "Glaucoma" -> "Cườm nước/Glôcôm", "Cataract" -> "Đục thủy tinh thể").
+      3. Giữ nguyên định dạng Markdown:
+         - Sử dụng các cấp độ tiêu đề (#, ##, ###) tương ứng với tài liệu gốc.
+         - Giữ nguyên cấu trúc bảng (tables), danh sách (lists), và các đoạn văn.
+         - Dịch chú thích hình ảnh (ví dụ: "Figure 1.1" -> "Hình 1.1").
+      4. KHÔNG thêm lời dẫn, không giải thích, không nhận xét. Chỉ trả về nội dung đã được dịch.
+      5. Nếu có các ký hiệu đặc biệt hoặc công thức, hãy giữ nguyên hoặc trình bày lại một cách dễ hiểu nhất trong Markdown.
     `;
 
-    const prompt = `Dịch trang ${pageNumber}`;
+    const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa chuyên ngành Nhãn khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
 
     try {
       const response = await this.ai.models.generateContent({
