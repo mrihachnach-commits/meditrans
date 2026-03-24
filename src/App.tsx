@@ -5,8 +5,10 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { getDocument, GlobalWorkerOptions, version as pdfjsVersion } from 'pdfjs-dist';
+import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
+import { MedicalDictionary } from './components/MedicalDictionary';
 
 // Use a reliable CDN for the worker that matches the installed version exactly
 GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
@@ -57,46 +59,26 @@ export default function App() {
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
+  const [currentJob, setCurrentJob] = useState(1);
+  const PAGES_PER_JOB = 100;
+  const totalJobs = Math.ceil(numPages / PAGES_PER_JOB);
+
+  // Use a ref for the master list to avoid massive state updates causing lag
   const [translations, setTranslations] = useState<TranslationState>({});
   const translationsRef = useRef<TranslationState>({});
+  const [activeTranslation, setActiveTranslation] = useState<{page: number, content: string, status: string} | null>(null);
   const translatingPagesRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     translationsRef.current = translations;
   }, [translations]);
 
-  const [currentJob, setCurrentJob] = useState(1);
-  const PAGES_PER_JOB = 100;
-  const pdfJobsRef = useRef<Uint8Array[]>([]);
-  const [isSplitting, setIsSplitting] = useState(false);
-  const totalJobs = Math.ceil(numPages / PAGES_PER_JOB);
-
-  const loadJob = async (jobIndex: number) => {
-    const jobData = pdfJobsRef.current[jobIndex - 1];
-    if (!jobData) return;
-
-    setIsPdfLoading(true);
-    try {
-      if (pdfDoc) {
-        await pdfDoc.destroy();
-      }
-      const loadingTask = getDocument({ data: jobData });
-      const pdf = await loadingTask.promise;
-      setPdfDoc(pdf);
-    } catch (error) {
-      console.error("Error loading job:", error);
-      setPdfError(`Lỗi khi tải phần ${jobIndex}.`);
-    } finally {
-      setIsPdfLoading(false);
-    }
-  };
-
+  // Sync currentJob with currentPage (Virtual Job)
   useEffect(() => {
     if (numPages > 0) {
       const newJob = Math.ceil(currentPage / PAGES_PER_JOB);
       if (newJob !== currentJob) {
         setCurrentJob(newJob);
-        loadJob(newJob);
       }
     }
   }, [currentPage, numPages, currentJob]);
@@ -143,6 +125,8 @@ export default function App() {
   const [fontFamily, setFontFamily] = useState('Inter');
   
   const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [selectedTerm, setSelectedTerm] = useState<string | null>(null);
+  const [dictionaryPosition, setDictionaryPosition] = useState({ x: 0, y: 0 });
   
   const clearFile = () => {
     if (fileUrl) URL.revokeObjectURL(fileUrl);
@@ -152,7 +136,6 @@ export default function App() {
     setNumPages(0);
     setCurrentPage(1);
     setCurrentJob(1);
-    pdfJobsRef.current = [];
     setTranslations({});
     setPdfError(null);
     isRenderingRef.current = false;
@@ -162,6 +145,7 @@ export default function App() {
   };
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const textLayerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<any>(null);
   const geminiService = useRef<GeminiService | null>(null);
@@ -169,67 +153,53 @@ export default function App() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile && selectedFile.type === 'application/pdf') {
+      // Clear previous
+      if (fileUrl) URL.revokeObjectURL(fileUrl);
+      if (pdfDoc) await pdfDoc.destroy();
+
       setFile(selectedFile);
       setTranslations({});
       setCurrentPage(1);
       setCurrentJob(1);
       setIsPdfLoading(true);
       setPdfError(null);
-      pdfJobsRef.current = [];
       
       try {
-        const arrayBuffer = await selectedFile.arrayBuffer();
+        // Use URL.createObjectURL for memory efficiency - browser handles the file access
+        const url = URL.createObjectURL(selectedFile);
+        setFileUrl(url);
         
-        // Use pdf-lib to split the PDF if it's large
-        setIsSplitting(true);
-        const mainPdfDoc = await PDFDocument.load(arrayBuffer);
-        const totalPageCount = mainPdfDoc.getPageCount();
-        setNumPages(totalPageCount);
+        const loadingTask = getDocument({
+          url,
+          cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjsVersion}/cmaps/`,
+          cMapPacked: true,
+          disableAutoFetch: false,
+          disableStream: false,
+        });
 
-        if (totalPageCount > PAGES_PER_JOB) {
-          const jobs: Uint8Array[] = [];
-          for (let i = 0; i < totalPageCount; i += PAGES_PER_JOB) {
-            const newDoc = await PDFDocument.create();
-            const end = Math.min(i + PAGES_PER_JOB, totalPageCount);
-            const indices = Array.from({ length: end - i }, (_, k) => i + k);
-            const copiedPages = await newDoc.copyPages(mainPdfDoc, indices);
-            copiedPages.forEach(page => newDoc.addPage(page));
-            const pdfBytes = await newDoc.save();
-            jobs.push(pdfBytes);
-          }
-          pdfJobsRef.current = jobs;
-        } else {
-          pdfJobsRef.current = [new Uint8Array(arrayBuffer)];
-        }
-        setIsSplitting(false);
-
-        // Load the first job into PDF.js
-        await loadJob(1);
+        const pdf = await loadingTask.promise;
+        setPdfDoc(pdf);
+        setNumPages(pdf.numPages);
       } catch (error) {
         console.error("Error loading PDF:", error);
         setPdfError("Không thể tải file PDF. Vui lòng thử lại.");
       } finally {
         setIsPdfLoading(false);
-        setIsSplitting(false);
       }
     }
   };
 
-  const renderPage = useCallback(async (globalPageNum: number) => {
-    if (!pdfDoc || !canvasRef.current) return;
-
-    // Map global page to local job page
-    const localPageNum = (globalPageNum - 1) % PAGES_PER_JOB + 1;
+  const renderPage = useCallback(async (pageNum: number) => {
+    if (!pdfDoc || !canvasRef.current || !textLayerRef.current) return;
 
     setIsRendering(true);
     isRenderingRef.current = true;
-    // Cancel previous render task if any
     if (renderTaskRef.current) {
       renderTaskRef.current.cancel();
     }
 
     try {
-      const page = await pdfDoc.getPage(localPageNum);
+      const page = await pdfDoc.getPage(pageNum);
       const viewport = page.getViewport({ scale: zoom * 2 });
       const canvas = canvasRef.current;
       const context = canvas.getContext('2d');
@@ -237,29 +207,36 @@ export default function App() {
       if (context) {
         canvas.height = viewport.height;
         canvas.width = viewport.width;
-        
-        // Scale canvas style back to logical size for high-DPI display
         canvas.style.width = `${viewport.width / 2}px`;
         canvas.style.height = `${viewport.height / 2}px`;
-
-        const renderContext = {
+        
+        const renderTask = page.render({
           canvasContext: context,
           viewport: viewport,
-        };
-        
-        const renderTask = page.render(renderContext as any);
+        } as any);
         renderTaskRef.current = renderTask;
         await renderTask.promise;
         
-        // Free up memory
+        // Render text layer
+        const textContent = await page.getTextContent();
+        const textLayerDiv = textLayerRef.current;
+        textLayerDiv.innerHTML = '';
+        textLayerDiv.style.width = `${viewport.width / 2}px`;
+        textLayerDiv.style.height = `${viewport.height / 2}px`;
+        
+        const textLayer = new pdfjs.TextLayer({
+          textContentSource: textContent,
+          container: textLayerDiv,
+          viewport: page.getViewport({ scale: zoom }),
+        });
+        await textLayer.render();
+
+        // Crucial for memory: cleanup page resources
         page.cleanup();
       }
     } catch (error: any) {
-      if (error.name === 'RenderingCancelledException') {
-        // Ignore cancellation
-      } else {
+      if (error.name !== 'RenderingCancelledException') {
         console.error("Error rendering page:", error);
-        setPdfError("Không thể hiển thị trang này. Vui lòng thử lại.");
       }
     } finally {
       setIsRendering(false);
@@ -270,16 +247,13 @@ export default function App() {
   const fitToWidth = async () => {
     if (!pdfDoc || !containerRef.current) return;
     
-    // Use requestAnimationFrame to ensure layout has settled
     requestAnimationFrame(async () => {
       if (!pdfDoc || !containerRef.current) return;
       try {
-        const localPageNum = (currentPage - 1) % PAGES_PER_JOB + 1;
-        const page = await pdfDoc.getPage(localPageNum);
+        const page = await pdfDoc.getPage(currentPage);
         const viewport = page.getViewport({ scale: 1 });
-        // Use getBoundingClientRect for more accurate width calculation
         const rect = containerRef.current.getBoundingClientRect();
-        const containerWidth = rect.width - 64; // account for padding (p-8 = 32px each side)
+        const containerWidth = rect.width - 64;
         const newZoom = containerWidth / viewport.width;
         setZoom(Number(newZoom.toFixed(2)));
         page.cleanup();
@@ -326,13 +300,11 @@ export default function App() {
 
     translatingPagesRef.current.add(targetPage);
     setIsTranslating(true);
-    setTranslations(prev => ({
-      ...prev,
-      [targetPage]: { content: '', status: 'loading' }
-    }));
+    
+    // Set active translation for smooth streaming without re-rendering the whole list
+    setActiveTranslation({ page: targetPage, content: '', status: 'loading' });
 
     try {
-      // Small delay to ensure canvas is fully ready and stable
       await new Promise(resolve => setTimeout(resolve, 200));
       const imageBuffer = canvasRef.current.toDataURL('image/jpeg', 0.8);
       const stream = geminiService.current.translateMedicalPageStream(imageBuffer, targetPage);
@@ -340,26 +312,18 @@ export default function App() {
       let fullContent = "";
       for await (const chunk of stream) {
         fullContent += chunk;
-        setTranslations(prev => ({
-          ...prev,
-          [targetPage]: { content: fullContent, status: 'loading' }
-        }));
+        setActiveTranslation({ page: targetPage, content: fullContent, status: 'loading' });
       }
       
-      setTranslations(prev => ({
-        ...prev,
-        [targetPage]: { content: fullContent, status: 'success' }
-      }));
+      const finalResult = { content: fullContent, status: 'success' as const };
+      setTranslations(prev => ({ ...prev, [targetPage]: finalResult }));
+      setActiveTranslation(null);
     } catch (error: any) {
       console.error("Translation Error:", error);
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : (typeof error === 'string' ? error : 'Dịch thuật thất bại. Vui lòng kiểm tra API Key hoặc kết nối mạng.');
-      
-      setTranslations(prev => ({
-        ...prev,
-        [targetPage]: { content: errorMessage, status: 'error' }
-      }));
+      const errorMessage = error instanceof Error ? error.message : 'Dịch thuật thất bại.';
+      const errorResult = { content: errorMessage, status: 'error' as const };
+      setTranslations(prev => ({ ...prev, [targetPage]: errorResult }));
+      setActiveTranslation(null);
     } finally {
       translatingPagesRef.current.delete(targetPage);
       setIsTranslating(false);
@@ -474,6 +438,19 @@ export default function App() {
     setIsDragging(false);
     if (containerRef.current) {
       containerRef.current.style.cursor = isPanning ? 'grab' : 'auto';
+    }
+
+    // Handle text selection for dictionary
+    const selection = window.getSelection();
+    if (selection && selection.toString().trim().length > 0) {
+      const text = selection.toString().trim();
+      // Only trigger if it looks like a medical term (not too long)
+      if (text.length > 2 && text.length < 50) {
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        setDictionaryPosition({ x: rect.left, y: rect.bottom + 10 });
+        setSelectedTerm(text);
+      }
     }
   };
 
@@ -724,11 +701,10 @@ export default function App() {
               >
                 <div className="min-w-full min-h-full flex">
                   <div className="relative m-auto my-8">
-                    {(isPdfLoading || isRendering || isSplitting) && (
+                    {(isPdfLoading || isRendering) && (
                       <div className="absolute inset-0 flex items-center justify-center bg-slate-200/30 z-10 rounded-lg">
                         <div className="flex flex-col items-center gap-2">
                           <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
-                          {isSplitting && <span className="text-xs font-bold text-indigo-600">Đang tối ưu hóa tài liệu lớn...</span>}
                         </div>
                       </div>
                     )}
@@ -746,6 +722,11 @@ export default function App() {
                         "shadow-2xl rounded-lg border border-slate-200 bg-white transition-opacity duration-200", 
                         (isPdfLoading || isRendering) ? "opacity-50" : "opacity-100"
                       )} 
+                    />
+                    <div 
+                      ref={textLayerRef}
+                      className="absolute inset-0 textLayer pointer-events-auto"
+                      onMouseUp={handleMouseUp}
                     />
                   </div>
                 </div>
@@ -861,7 +842,7 @@ export default function App() {
               
               <div className="flex-1 overflow-auto p-12 bg-white">
                 <AnimatePresence mode="wait">
-                  {!translations[currentPage] ? (
+                  {(!translations[currentPage] && (!activeTranslation || activeTranslation.page !== currentPage)) ? (
                     (isRendering || isPdfLoading) ? (
                       <motion.div 
                         key="rendering"
@@ -887,7 +868,7 @@ export default function App() {
                         <p className="text-xs">Nhấn "Dịch trang này" để bắt đầu.</p>
                       </motion.div>
                     )
-                  ) : translations[currentPage].status === 'loading' && !translations[currentPage].content ? (
+                  ) : (translations[currentPage]?.status === 'loading' && !translations[currentPage].content && (!activeTranslation || activeTranslation.page !== currentPage)) ? (
                     <motion.div 
                       key="loading"
                       initial={{ opacity: 0 }}
@@ -904,7 +885,7 @@ export default function App() {
                         <p className="text-xs text-slate-400">Gemini đang xử lý hình ảnh và văn bản</p>
                       </div>
                     </motion.div>
-                  ) : translations[currentPage].status === 'error' ? (
+                  ) : translations[currentPage]?.status === 'error' ? (
                     <motion.div 
                       key="error"
                       initial={{ opacity: 0 }}
@@ -945,7 +926,8 @@ export default function App() {
                       key="content"
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="markdown-body"
+                      className="markdown-body select-text"
+                      onMouseUp={handleMouseUp}
                       style={{ 
                         fontSize: `${fontSize}px`,
                         fontFamily: fontFamily === 'Inter' ? 'var(--font-sans)' : 
@@ -956,8 +938,16 @@ export default function App() {
                       }}
                     >
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {translations[currentPage].content}
+                        {activeTranslation && activeTranslation.page === currentPage 
+                          ? activeTranslation.content 
+                          : translations[currentPage]?.content || ''}
                       </ReactMarkdown>
+                      {activeTranslation && activeTranslation.page === currentPage && (
+                        <div className="mt-4 flex items-center gap-2 text-indigo-400 italic text-xs animate-pulse">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <span>Đang dịch...</span>
+                        </div>
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -967,6 +957,16 @@ export default function App() {
         </div>
       )}
     </main>
+
+      {/* Dictionary Pop-up */}
+      {selectedTerm && (
+        <MedicalDictionary 
+          selectedTerm={selectedTerm}
+          onClose={() => setSelectedTerm(null)}
+          geminiService={geminiService.current}
+          position={dictionaryPosition}
+        />
+      )}
 
       {/* Settings Modal */}
       <AnimatePresence>

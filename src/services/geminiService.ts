@@ -207,4 +207,59 @@ export class GeminiService {
       throw new Error(`Lỗi dịch thuật: ${error.message || "Không rõ nguyên nhân"}`);
     }
   }
+
+  async lookupMedicalTerm(term: string): Promise<any> {
+    // Re-check for key if not initialized (might have been selected via platform)
+    if (!this.ai) {
+      const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
+        this.ai = new GoogleGenAI({ apiKey: envKey });
+      }
+    }
+
+    if (!this.ai) {
+      throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
+    }
+
+    const systemInstruction = `
+      Bạn là một chuyên gia từ điển y khoa cao cấp.
+      Nhiệm vụ của bạn là cung cấp định nghĩa, từ đồng nghĩa và các thuật ngữ liên quan cho một thuật ngữ y khoa được cung cấp.
+      
+      YÊU CẦU:
+      1. Trả về kết quả dưới định dạng JSON.
+      2. Ngôn ngữ: Tiếng Việt.
+      3. Cấu trúc JSON:
+         {
+           "term": "Thuật ngữ gốc",
+           "definition": "Định nghĩa chi tiết và chính xác bằng tiếng Việt",
+           "synonyms": ["từ đồng nghĩa 1", "từ đồng nghĩa 2"],
+           "relatedTerms": ["thuật ngữ liên quan 1", "thuật ngữ liên quan 2"],
+           "source": "Nguồn tham khảo (ví dụ: Từ điển Y học, ICD-10, v.v.)"
+         }
+    `;
+
+    const prompt = `Hãy tra cứu thuật ngữ y khoa sau: "${term}"`;
+
+    try {
+      const response = await this.ai.models.generateContent({
+        model: this.modelName,
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          systemInstruction: systemInstruction,
+          temperature: 0.1,
+          responseMimeType: "application/json",
+        }
+      });
+
+      const text = response.text;
+      if (!text) throw new Error("Model returned no text.");
+      
+      // Clean up potential markdown code blocks
+      const cleanJson = text.replace(/```json\n?|```/g, '').trim();
+      return JSON.parse(cleanJson);
+    } catch (error: any) {
+      console.error("Gemini Lookup Error:", error);
+      throw new Error(`Lỗi tra cứu: ${error.message || "Không rõ nguyên nhân"}`);
+    }
+  }
 }
