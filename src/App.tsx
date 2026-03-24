@@ -4,14 +4,13 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { getDocument, GlobalWorkerOptions, version as pdfjsVersion } from 'pdfjs-dist';
 import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
 import { MedicalDictionary } from './components/MedicalDictionary';
 
 // Use a reliable CDN for the worker that matches the installed version exactly
-GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 import { 
   Upload, 
@@ -169,9 +168,9 @@ export default function App() {
         const url = URL.createObjectURL(selectedFile);
         setFileUrl(url);
         
-        const loadingTask = getDocument({
+        const loadingTask = pdfjs.getDocument({
           url,
-          cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjsVersion}/cmaps/`,
+          cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
           cMapPacked: true,
           disableAutoFetch: false,
           disableStream: false,
@@ -221,13 +220,18 @@ export default function App() {
         const textContent = await page.getTextContent();
         const textLayerDiv = textLayerRef.current;
         textLayerDiv.innerHTML = '';
-        textLayerDiv.style.width = `${viewport.width / 2}px`;
-        textLayerDiv.style.height = `${viewport.height / 2}px`;
+        
+        // Use the same scale as the visual representation
+        const textViewport = page.getViewport({ scale: zoom });
+        textLayerDiv.style.width = `${textViewport.width}px`;
+        textLayerDiv.style.height = `${textViewport.height}px`;
+        textLayerDiv.style.left = '0';
+        textLayerDiv.style.top = '0';
         
         const textLayer = new pdfjs.TextLayer({
           textContentSource: textContent,
           container: textLayerDiv,
-          viewport: page.getViewport({ scale: zoom }),
+          viewport: textViewport,
         });
         await textLayer.render();
 
@@ -434,24 +438,76 @@ export default function App() {
     containerRef.current.scrollTop = dragStart.scrollTop - dy;
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (e: React.MouseEvent) => {
     setIsDragging(false);
     if (containerRef.current) {
       containerRef.current.style.cursor = isPanning ? 'grab' : 'auto';
     }
 
     // Handle text selection for dictionary
-    const selection = window.getSelection();
-    if (selection && selection.toString().trim().length > 0) {
-      const text = selection.toString().trim();
-      // Only trigger if it looks like a medical term (not too long)
-      if (text.length > 2 && text.length < 50) {
-        const range = selection.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
-        setDictionaryPosition({ x: rect.left, y: rect.bottom + 10 });
-        setSelectedTerm(text);
+    // Use a small timeout to ensure the selection is fully captured by the browser
+    setTimeout(() => {
+      const selection = window.getSelection();
+      const selectedText = selection?.toString() || "";
+      
+      if (selectedText.trim().length > 0) {
+        // Verify selection is within our target areas to avoid accidental triggers
+        const anchorNode = selection?.anchorNode;
+        if (!anchorNode) return;
+        
+        const targetElement = anchorNode instanceof Element ? anchorNode : anchorNode.parentElement;
+        const isInsidePDF = targetElement?.closest('.textLayer');
+        const isInsideTranslation = targetElement?.closest('.markdown-body');
+        
+        if (!isInsidePDF && !isInsideTranslation) return;
+
+        // Clean the selected text: collapse whitespace and remove surrounding punctuation
+        // We also remove soft hyphens and other invisible characters common in PDFs
+        const text = selectedText
+          .replace(/[\u00AD\u200B\u200C\u200D]/g, '') // Remove soft hyphens and zero-width spaces
+          .replace(/\s+/g, ' ')
+          .trim()
+          .replace(/[.,;:!?()\[\]{}'"]+$/, '')
+          .replace(/^[.,;:!?()\[\]{}'"]+/, '');
+        
+        // Only trigger if it looks like a medical term (not too long, not just numbers)
+        const isNumeric = /^\d+$/.test(text);
+        const wordCount = text.split(/\s+/).length;
+        
+        // Check if selection spans multiple lines by comparing rects
+        let isSingleLine = true;
+        try {
+          const range = selection?.getRangeAt(0);
+          if (range) {
+            const rects = range.getClientRects();
+            if (rects.length > 1) {
+              // If multiple rects, check if they are on different vertical levels
+              const firstRect = rects[0];
+              for (let i = 1; i < rects.length; i++) {
+                if (Math.abs(rects[i].top - firstRect.top) > 10) {
+                  isSingleLine = false;
+                  break;
+                }
+              }
+            }
+          }
+        } catch (e) {}
+
+        if (text.length > 1 && text.length < 50 && !isNumeric && wordCount <= 4 && isSingleLine) {
+          try {
+            const range = selection?.getRangeAt(0);
+            if (range) {
+              const rect = range.getBoundingClientRect();
+              // Position relative to the viewport
+              setDictionaryPosition({ x: rect.left, y: rect.bottom + 10 });
+              setSelectedTerm(text);
+            }
+          } catch (err) {
+            // Range might be invalid if selection changed rapidly
+          }
+        }
       }
-    }
+    }, 50);
   };
 
   const saveApiKey = (key: string) => {
@@ -700,16 +756,16 @@ export default function App() {
                 onMouseLeave={handleMouseUp}
               >
                 <div className="min-w-full min-h-full flex">
-                  <div className="relative m-auto my-8">
+                  <div className="relative m-auto my-8 shadow-2xl rounded-lg border border-slate-200 bg-white overflow-hidden">
                     {(isPdfLoading || isRendering) && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-slate-200/30 z-10 rounded-lg">
+                      <div className="absolute inset-0 flex items-center justify-center bg-slate-200/30 z-20">
                         <div className="flex flex-col items-center gap-2">
                           <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
                         </div>
                       </div>
                     )}
                     {pdfError && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20 p-4 text-center rounded-lg">
+                      <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20 p-4 text-center">
                         <div className="max-w-xs">
                           <AlertCircle className="w-10 h-10 text-rose-500 mx-auto mb-2" />
                           <p className="text-sm font-bold text-slate-800">{pdfError}</p>
@@ -719,13 +775,13 @@ export default function App() {
                     <canvas 
                       ref={canvasRef} 
                       className={cn(
-                        "shadow-2xl rounded-lg border border-slate-200 bg-white transition-opacity duration-200", 
+                        "transition-opacity duration-200 relative z-0 block", 
                         (isPdfLoading || isRendering) ? "opacity-50" : "opacity-100"
                       )} 
                     />
                     <div 
                       ref={textLayerRef}
-                      className="absolute inset-0 textLayer pointer-events-auto"
+                      className="absolute inset-0 textLayer pointer-events-auto z-10"
                       onMouseUp={handleMouseUp}
                     />
                   </div>

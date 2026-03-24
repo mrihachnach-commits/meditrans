@@ -1,4 +1,4 @@
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 
 export class GeminiService {
   private ai: any;
@@ -222,20 +222,14 @@ export class GeminiService {
     }
 
     const systemInstruction = `
-      Bạn là một chuyên gia từ điển y khoa cao cấp.
-      Nhiệm vụ của bạn là cung cấp định nghĩa, từ đồng nghĩa và các thuật ngữ liên quan cho một thuật ngữ y khoa được cung cấp.
+      Bạn là một chuyên gia từ điển y khoa cao cấp, đặc biệt am hiểu về Nhãn khoa (Ophthalmology).
+      Nhiệm vụ của bạn là cung cấp định nghĩa cực kỳ chính xác, từ đồng nghĩa và các thuật ngữ liên quan cho một thuật ngữ y khoa được cung cấp.
       
       YÊU CẦU:
-      1. Trả về kết quả dưới định dạng JSON.
-      2. Ngôn ngữ: Tiếng Việt.
-      3. Cấu trúc JSON:
-         {
-           "term": "Thuật ngữ gốc",
-           "definition": "Định nghĩa chi tiết và chính xác bằng tiếng Việt",
-           "synonyms": ["từ đồng nghĩa 1", "từ đồng nghĩa 2"],
-           "relatedTerms": ["thuật ngữ liên quan 1", "thuật ngữ liên quan 2"],
-           "source": "Nguồn tham khảo (ví dụ: Từ điển Y học, ICD-10, v.v.)"
-         }
+      1. Ngôn ngữ: Tiếng Việt.
+      2. Định nghĩa phải mang tính chuyên môn y khoa nhưng dễ hiểu.
+      3. Nếu thuật ngữ có nhiều nghĩa, hãy ưu tiên nghĩa trong lĩnh vực Nhãn khoa.
+      4. Tuyệt đối không được bịa đặt thông tin. Nếu không biết, hãy trả về định nghĩa chung nhất hoặc thông báo không tìm thấy.
     `;
 
     const prompt = `Hãy tra cứu thuật ngữ y khoa sau: "${term}"`;
@@ -248,6 +242,25 @@ export class GeminiService {
           systemInstruction: systemInstruction,
           temperature: 0.1,
           responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              term: { type: Type.STRING, description: "Thuật ngữ gốc được tra cứu" },
+              definition: { type: Type.STRING, description: "Định nghĩa chi tiết bằng tiếng Việt" },
+              synonyms: { 
+                type: Type.ARRAY, 
+                items: { type: Type.STRING },
+                description: "Danh sách các từ đồng nghĩa hoặc tên gọi khác"
+              },
+              relatedTerms: { 
+                type: Type.ARRAY, 
+                items: { type: Type.STRING },
+                description: "Các thuật ngữ y khoa liên quan mật thiết"
+              },
+              source: { type: Type.STRING, description: "Nguồn tham khảo uy tín" }
+            },
+            required: ["term", "definition", "synonyms", "relatedTerms"]
+          }
         }
       });
 

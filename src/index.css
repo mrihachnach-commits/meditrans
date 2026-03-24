@@ -43,13 +43,15 @@
   text-align: initial;
   inset: 0;
   overflow: hidden;
-  opacity: 0.2;
+  opacity: 1;
   line-height: 1;
   text-rendering: optimizeLegibility;
+  pointer-events: auto;
 }
 
 .textLayer span,
-.textLayer br {
+.textLayer br,
+.textLayer div {
   color: transparent;
   position: absolute;
   white-space: pre;
@@ -58,7 +60,12 @@
 }
 
 .textLayer ::selection {
-  background: rgba(79, 70, 229, 0.2);
+  background: rgba(79, 70, 229, 0.4);
+}
+
+.textLayer .endOfLine {
+  display: block;
+  position: static;
 }
 
 .textLayer .endOfContent {

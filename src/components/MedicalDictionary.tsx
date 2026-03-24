@@ -132,6 +132,11 @@ export const MedicalDictionary: React.FC<MedicalDictionaryProps> = ({
                     {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </div>
+                {info.term.toLowerCase() !== selectedTerm.toLowerCase() && (
+                  <p className="text-[10px] text-slate-400 mb-2 italic">
+                    Tra cứu từ: "{selectedTerm}"
+                  </p>
+                )}
                 <div className="h-1 w-12 bg-indigo-500 rounded-full mb-3" />
                 <p className="text-sm text-slate-600 leading-relaxed">
                   {info.definition}
