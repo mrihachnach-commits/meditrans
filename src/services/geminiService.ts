@@ -81,57 +81,78 @@ export class GeminiService {
 
     const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa chuyên ngành Nhãn khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
 
-    try {
-      const response = await this.ai.models.generateContentStream({
-        model: this.modelName,
-        contents: [
-          {
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType: "image/jpeg",
-                  data: imageBuffer.split(",")[1],
+    const MAX_RETRIES = 3;
+    let retryCount = 0;
+
+    while (retryCount <= MAX_RETRIES) {
+      try {
+        const response = await this.ai.models.generateContentStream({
+          model: this.modelName,
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    mimeType: "image/jpeg",
+                    data: imageBuffer.split(",")[1],
+                  },
                 },
-              },
-            ],
-          },
-        ],
-        config: {
-          systemInstruction: systemInstruction,
-          temperature: 0.1,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          safetySettings: [
-            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-          ]
-        }
-      });
+              ],
+            },
+          ],
+          config: {
+            systemInstruction: systemInstruction,
+            temperature: 0.1,
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            safetySettings: [
+              { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+              { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+              { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+            ]
+          }
+        });
 
-      let fullText = "";
-      for await (const chunk of response) {
-        const chunkText = chunk.text;
-        if (chunkText) {
-          fullText += chunkText;
-          yield chunkText;
+        let fullText = "";
+        for await (const chunk of response) {
+          const chunkText = chunk.text;
+          if (chunkText) {
+            fullText += chunkText;
+            yield chunkText;
+          }
         }
-      }
 
-      if (!fullText) {
-        throw new Error("Model returned no text.");
+        if (!fullText) {
+          throw new Error("Model returned no text.");
+        }
+        
+        // Success, break the retry loop
+        break;
+
+      } catch (error: any) {
+        const isQuotaError = error.message?.toLowerCase().includes("quota") || 
+                           error.message?.toLowerCase().includes("429") ||
+                           error.message?.toLowerCase().includes("resource_exhausted");
+        
+        if (isQuotaError && retryCount < MAX_RETRIES) {
+          retryCount++;
+          const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
+          console.warn(`Quota exceeded. Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${MAX_RETRIES})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+        console.error("Gemini Pro Streaming Error:", error);
+        
+        if (error.message?.includes("API key not valid")) {
+          throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
+        }
+        if (isQuotaError) {
+          throw new Error("Hết hạn mức API (Quota exceeded). Vui lòng thử lại sau hoặc sử dụng API Key khác.");
+        }
+        throw new Error(`Lỗi dịch thuật: ${error.message || "Không rõ nguyên nhân"}`);
       }
-    } catch (error: any) {
-      console.error("Gemini Pro Streaming Error:", error);
-      
-      if (error.message?.includes("API key not valid")) {
-        throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
-      }
-      if (error.message?.includes("quota")) {
-        throw new Error("Hết hạn mức API (Quota exceeded). Vui lòng thử lại sau.");
-      }
-      throw new Error(`Lỗi dịch thuật: ${error.message || "Không rõ nguyên nhân"}`);
     }
   }
 
@@ -165,47 +186,65 @@ export class GeminiService {
 
     const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa chuyên ngành Nhãn khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
 
-    try {
-      const response = await this.ai.models.generateContent({
-        model: this.modelName,
-        contents: [
-          {
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType: "image/jpeg",
-                  data: imageBuffer.split(",")[1],
-                },
-              },
-            ],
-          },
-        ],
-        config: {
-          systemInstruction: systemInstruction,
-          temperature: 0.1,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          safetySettings: [
-            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-          ]
-        }
-      });
+    const MAX_RETRIES = 3;
+    let retryCount = 0;
 
-      return response.text || "Model returned no text.";
-    } catch (error: any) {
-      console.error("Gemini Translation Error:", error);
-      
-      if (error.message?.includes("API key not valid")) {
-        throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
+    while (retryCount <= MAX_RETRIES) {
+      try {
+        const response = await this.ai.models.generateContent({
+          model: this.modelName,
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    mimeType: "image/jpeg",
+                    data: imageBuffer.split(",")[1],
+                  },
+                },
+              ],
+            },
+          ],
+          config: {
+            systemInstruction: systemInstruction,
+            temperature: 0.1,
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            safetySettings: [
+              { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+              { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+              { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+            ]
+          }
+        });
+
+        return response.text || "Model returned no text.";
+      } catch (error: any) {
+        const isQuotaError = error.message?.toLowerCase().includes("quota") || 
+                           error.message?.toLowerCase().includes("429") ||
+                           error.message?.toLowerCase().includes("resource_exhausted");
+        
+        if (isQuotaError && retryCount < MAX_RETRIES) {
+          retryCount++;
+          const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
+          console.warn(`Quota exceeded. Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${MAX_RETRIES})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+        console.error("Gemini Translation Error:", error);
+        
+        if (error.message?.includes("API key not valid")) {
+          throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
+        }
+        if (isQuotaError) {
+          throw new Error("Hết hạn mức API (Quota exceeded). Vui lòng thử lại sau hoặc sử dụng API Key khác.");
+        }
+        throw new Error(`Lỗi dịch thuật: ${error.message || "Không rõ nguyên nhân"}`);
       }
-      if (error.message?.includes("quota")) {
-        throw new Error("Hết hạn mức API (Quota exceeded). Vui lòng thử lại sau.");
-      }
-      throw new Error(`Lỗi dịch thuật: ${error.message || "Không rõ nguyên nhân"}`);
     }
+    return "Lỗi: Quá số lần thử lại.";
   }
 
   async lookupMedicalTerm(term: string): Promise<any> {
@@ -234,45 +273,62 @@ export class GeminiService {
 
     const prompt = `Hãy tra cứu thuật ngữ y khoa sau: "${term}"`;
 
-    try {
-      const response = await this.ai.models.generateContent({
-        model: this.modelName,
-        contents: [{ parts: [{ text: prompt }] }],
-        config: {
-          systemInstruction: systemInstruction,
-          temperature: 0.1,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              term: { type: Type.STRING, description: "Thuật ngữ gốc được tra cứu" },
-              definition: { type: Type.STRING, description: "Định nghĩa chi tiết bằng tiếng Việt" },
-              synonyms: { 
-                type: Type.ARRAY, 
-                items: { type: Type.STRING },
-                description: "Danh sách các từ đồng nghĩa hoặc tên gọi khác"
-              },
-              relatedTerms: { 
-                type: Type.ARRAY, 
-                items: { type: Type.STRING },
-                description: "Các thuật ngữ y khoa liên quan mật thiết"
-              },
-              source: { type: Type.STRING, description: "Nguồn tham khảo uy tín" }
-            },
-            required: ["term", "definition", "synonyms", "relatedTerms"]
-          }
-        }
-      });
+    const MAX_RETRIES = 2;
+    let retryCount = 0;
 
-      const text = response.text;
-      if (!text) throw new Error("Model returned no text.");
-      
-      // Clean up potential markdown code blocks
-      const cleanJson = text.replace(/```json\n?|```/g, '').trim();
-      return JSON.parse(cleanJson);
-    } catch (error: any) {
-      console.error("Gemini Lookup Error:", error);
-      throw new Error(`Lỗi tra cứu: ${error.message || "Không rõ nguyên nhân"}`);
+    while (retryCount <= MAX_RETRIES) {
+      try {
+        const response = await this.ai.models.generateContent({
+          model: this.modelName,
+          contents: [{ parts: [{ text: prompt }] }],
+          config: {
+            systemInstruction: systemInstruction,
+            temperature: 0.1,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                term: { type: Type.STRING, description: "Thuật ngữ gốc được tra cứu" },
+                definition: { type: Type.STRING, description: "Định nghĩa chi tiết bằng tiếng Việt" },
+                synonyms: { 
+                  type: Type.ARRAY, 
+                  items: { type: Type.STRING },
+                  description: "Danh sách các từ đồng nghĩa hoặc tên gọi khác"
+                },
+                relatedTerms: { 
+                  type: Type.ARRAY, 
+                  items: { type: Type.STRING },
+                  description: "Các thuật ngữ y khoa liên quan mật thiết"
+                },
+                source: { type: Type.STRING, description: "Nguồn tham khảo uy tín" }
+              },
+              required: ["term", "definition", "synonyms", "relatedTerms"]
+            }
+          }
+        });
+
+        const text = response.text;
+        if (!text) throw new Error("Model returned no text.");
+        
+        // Clean up potential markdown code blocks
+        const cleanJson = text.replace(/```json\n?|```/g, '').trim();
+        return JSON.parse(cleanJson);
+      } catch (error: any) {
+        const isQuotaError = error.message?.toLowerCase().includes("quota") || 
+                           error.message?.toLowerCase().includes("429") ||
+                           error.message?.toLowerCase().includes("resource_exhausted");
+        
+        if (isQuotaError && retryCount < MAX_RETRIES) {
+          retryCount++;
+          const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
+          console.warn(`Quota exceeded for lookup. Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${MAX_RETRIES})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+        console.error("Gemini Lookup Error:", error);
+        throw new Error(`Lỗi tra cứu: ${error.message || "Không rõ nguyên nhân"}`);
+      }
     }
   }
 

@@ -108,7 +108,7 @@ export default function App() {
   }, [apiKey]);
 
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const [autoTranslate, setAutoTranslate] = useState(true);
+  const [autoTranslate, setAutoTranslate] = useState(false);
   const [zoom, setZoom] = useState(0.82); // Default to 82% as requested
   const [isAutoFit, setIsAutoFit] = useState(true);
   
@@ -365,7 +365,7 @@ export default function App() {
         if (!isRenderingRef.current && !translationsRef.current[currentPage]) {
           translateCurrentPage(currentPage);
         }
-      }, 500);
+      }, 1500);
       return () => clearTimeout(timer);
     }
   }, [currentPage, pdfDoc, autoTranslate, isRendering, translations, translateCurrentPage]);
