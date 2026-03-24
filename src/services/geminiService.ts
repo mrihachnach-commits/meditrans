@@ -275,4 +275,58 @@ export class GeminiService {
       throw new Error(`Lỗi tra cứu: ${error.message || "Không rõ nguyên nhân"}`);
     }
   }
+
+  async performOCR(imageBuffer: string): Promise<string> {
+    if (!this.ai) {
+      const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
+        this.ai = new GoogleGenAI({ apiKey: envKey });
+      }
+    }
+
+    if (!this.ai) {
+      throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
+    }
+
+    const systemInstruction = `
+      Bạn là một chuyên gia OCR (Nhận diện ký tự quang học) y khoa chuyên ngành Nhãn khoa.
+      Nhiệm vụ của bạn là trích xuất CHÍNH XÁC văn bản từ hình ảnh vùng được chọn.
+      
+      YÊU CẦU:
+      1. Chỉ trả về văn bản được trích xuất, không thêm lời dẫn, không giải thích.
+      2. Nếu vùng chọn chứa thuật ngữ y khoa, hãy trích xuất chính xác thuật ngữ đó.
+      3. Nếu vùng chọn chứa nhiều dòng, hãy nối chúng lại thành một chuỗi văn bản hợp lý.
+      4. Nếu không tìm thấy văn bản nào, hãy trả về chuỗi rỗng.
+    `;
+
+    const prompt = "Hãy trích xuất văn bản từ hình ảnh này.";
+
+    try {
+      const response = await this.ai.models.generateContent({
+        model: this.modelName,
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  mimeType: "image/jpeg",
+                  data: imageBuffer.split(",")[1],
+                },
+              },
+            ],
+          },
+        ],
+        config: {
+          systemInstruction: systemInstruction,
+          temperature: 0.1,
+        }
+      });
+
+      return response.text?.trim() || "";
+    } catch (error: any) {
+      console.error("Gemini OCR Error:", error);
+      throw new Error(`Lỗi OCR: ${error.message || "Không rõ nguyên nhân"}`);
+    }
+  }
 }

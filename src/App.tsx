@@ -26,6 +26,7 @@ import {
   Maximize2,
   Minimize2,
   Search,
+  Hand,
   Trash2,
   RefreshCcw,
   ZoomIn,
@@ -417,8 +418,44 @@ export default function App() {
     return () => container.removeEventListener('wheel', handleWheel);
   }, [pdfDoc]);
 
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (!isDragging || !containerRef.current) return;
+      e.preventDefault();
+      const dx = e.clientX - dragStart.x;
+      const dy = e.clientY - dragStart.y;
+      containerRef.current.scrollLeft = dragStart.scrollLeft - dx;
+      containerRef.current.scrollTop = dragStart.scrollTop - dy;
+    };
+
+    const handleGlobalMouseUp = () => {
+      if (isDragging) {
+        setIsDragging(false);
+        document.body.style.cursor = 'auto';
+        if (containerRef.current) {
+          containerRef.current.style.cursor = isPanning ? 'grab' : 'auto';
+        }
+      }
+    };
+
+    if (isDragging) {
+      document.body.style.cursor = 'grabbing';
+      window.addEventListener('mousemove', handleGlobalMouseMove);
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [isDragging, isPanning, dragStart]);
+
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!isPanning || !containerRef.current) return;
+    
+    // Only handle left click
+    if (e.button !== 0) return;
+
     setIsDragging(true);
     setDragStart({
       x: e.clientX,
@@ -429,21 +466,7 @@ export default function App() {
     containerRef.current.style.cursor = 'grabbing';
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !containerRef.current) return;
-    e.preventDefault();
-    const dx = e.clientX - dragStart.x;
-    const dy = e.clientY - dragStart.y;
-    containerRef.current.scrollLeft = dragStart.scrollLeft - dx;
-    containerRef.current.scrollTop = dragStart.scrollTop - dy;
-  };
-
   const handleMouseUp = (e: React.MouseEvent) => {
-    setIsDragging(false);
-    if (containerRef.current) {
-      containerRef.current.style.cursor = isPanning ? 'grab' : 'auto';
-    }
-
     // Handle text selection for dictionary
     // Use a small timeout to ensure the selection is fully captured by the browser
     setTimeout(() => {
@@ -699,7 +722,7 @@ export default function App() {
                       )}
                       title={isPanning ? "Tắt chế độ di chuyển" : "Bật chế độ di chuyển (Hand Tool)"}
                     >
-                      <Search className={cn("w-4 h-4", isPanning && "rotate-45")} />
+                      <Hand className="w-4 h-4" />
                     </button>
                     <div className="w-px h-3 bg-slate-300 mx-0.5" />
                     <button 
@@ -747,16 +770,13 @@ export default function App() {
               <div 
                 className={cn(
                   "flex-1 overflow-auto p-8 pdf-container relative bg-slate-200/50",
-                  isPanning ? "cursor-grab" : "cursor-auto"
+                  isPanning ? "cursor-grab select-none touch-none" : "cursor-auto"
                 )} 
                 ref={containerRef}
                 onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
               >
-                <div className="min-w-full min-h-full flex">
-                  <div className="relative m-auto my-8 shadow-2xl rounded-lg border border-slate-200 bg-white overflow-hidden">
+                <div className="inline-block min-w-full text-center align-top">
+                  <div className="inline-block text-left relative my-8 shadow-2xl rounded-lg border border-slate-200 bg-white overflow-hidden shrink-0">
                     {(isPdfLoading || isRendering) && (
                       <div className="absolute inset-0 flex items-center justify-center bg-slate-200/30 z-20">
                         <div className="flex flex-col items-center gap-2">
