@@ -240,6 +240,7 @@ export default function App() {
     try {
       await signInWithPopup(auth, googleProvider);
       setShowAuthModal(false);
+      setShowSettings(false);
     } catch (error: any) {
       if (error.code === 'auth/cancelled-popup-request') {
         console.warn("Login popup request was cancelled as another one was already pending.");
