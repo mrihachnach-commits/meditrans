@@ -326,18 +326,47 @@ export default function App() {
     setActiveTranslation({ page: targetPage, content: '', status: 'loading' });
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 200));
-      const imageBuffer = canvasRef.current.toDataURL('image/jpeg', 0.8);
+      // Create a temporary canvas for optimized capture
+      const originalCanvas = canvasRef.current;
+      const MAX_DIMENSION = 1600; // Optimized for OCR without being too large
+      
+      let captureCanvas = originalCanvas;
+      
+      // Resize if the original is too large to reduce payload size and API latency
+      if (originalCanvas.width > MAX_DIMENSION || originalCanvas.height > MAX_DIMENSION) {
+        const tempCanvas = document.createElement('canvas');
+        const ratio = Math.min(MAX_DIMENSION / originalCanvas.width, MAX_DIMENSION / originalCanvas.height);
+        tempCanvas.width = originalCanvas.width * ratio;
+        tempCanvas.height = originalCanvas.height * ratio;
+        
+        const tempCtx = tempCanvas.getContext('2d');
+        if (tempCtx) {
+          tempCtx.drawImage(originalCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
+          captureCanvas = tempCanvas;
+        }
+      }
+
+      const imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.75); // Slightly lower quality for faster upload
       const stream = translationService.current.translateMedicalPageStream({
         imageBuffer,
         pageNumber: targetPage
       });
       
       let fullContent = "";
+      let lastUpdateTime = Date.now();
+      const UPDATE_INTERVAL = 100; // Update UI every 100ms for smooth streaming without lag
+
       for await (const chunk of stream) {
         fullContent += chunk;
-        setActiveTranslation({ page: targetPage, content: fullContent, status: 'loading' });
+        const now = Date.now();
+        if (now - lastUpdateTime > UPDATE_INTERVAL) {
+          setActiveTranslation({ page: targetPage, content: fullContent, status: 'loading' });
+          lastUpdateTime = now;
+        }
       }
+      
+      // Final update to ensure everything is rendered
+      setActiveTranslation({ page: targetPage, content: fullContent, status: 'loading' });
       
       const finalResult = { content: fullContent, status: 'success' as const };
       setTranslations(prev => ({ ...prev, [targetPage]: finalResult }));
@@ -391,7 +420,7 @@ export default function App() {
         if (!isRenderingRef.current && !translationsRef.current[currentPage]) {
           translateCurrentPage(currentPage);
         }
-      }, 1500);
+      }, 800); // Reduced from 1500ms for better responsiveness
       return () => clearTimeout(timer);
     }
   }, [currentPage, pdfDoc, autoTranslate, isRendering, translations, translateCurrentPage]);
@@ -1116,8 +1145,8 @@ export default function App() {
                     </label>
                     <div className="grid grid-cols-1 gap-3">
                       {[
-                        { id: 'gemini-flash', name: 'Gemini 2.0 Flash', desc: 'Nhanh, hiệu quả, phù hợp đa số tài liệu.' },
-                        { id: 'gemini-pro', name: 'Gemini 1.5 Pro', desc: 'Chính xác cao, xử lý ngữ cảnh phức tạp tốt hơn.' },
+                        { id: 'gemini-flash', name: 'Gemini 2.0 Flash', desc: 'Nhanh, hiệu quả, phù hợp đa số tài liệu.', tag: 'Nhanh nhất', tagColor: 'bg-green-100 text-green-700' },
+                        { id: 'gemini-pro', name: 'Gemini 1.5 Pro', desc: 'Chính xác cao, xử lý ngữ cảnh phức tạp tốt hơn.', tag: 'Chính xác cao', tagColor: 'bg-amber-100 text-amber-700' },
                         { id: 'medical-specialized', name: 'Medical Specialized API', desc: 'API chuyên dụng cho thuật ngữ y khoa (Mô phỏng).' }
                       ].map((engine) => (
                         <button
@@ -1131,9 +1160,16 @@ export default function App() {
                           )}
                         >
                           <div className="flex items-center justify-between w-full mb-1">
-                            <span className={cn("font-bold text-sm", tempEngine === engine.id ? "text-indigo-700" : "text-slate-700")}>
-                              {engine.name}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className={cn("font-bold text-sm", tempEngine === engine.id ? "text-indigo-700" : "text-slate-700")}>
+                                {engine.name}
+                              </span>
+                              {(engine as any).tag && (
+                                <span className={cn("px-1.5 py-0.5 text-[8px] font-bold rounded-full uppercase tracking-wider", (engine as any).tagColor)}>
+                                  {(engine as any).tag}
+                                </span>
+                              )}
+                            </div>
                             {tempEngine === engine.id && <CheckCircle2 className="w-4 h-4 text-indigo-600" />}
                           </div>
                           <span className="text-[10px] text-slate-500 leading-tight">{engine.desc}</span>

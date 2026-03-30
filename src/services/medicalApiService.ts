@@ -33,7 +33,7 @@ export class MedicalApiService implements TranslationService {
     ];
 
     for (const chunk of mockResponse) {
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 100));
       yield chunk;
     }
   }
