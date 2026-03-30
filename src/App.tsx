@@ -68,12 +68,17 @@ export default function App() {
   // Use a ref for the master list to avoid massive state updates causing lag
   const [translations, setTranslations] = useState<TranslationState>({});
   const translationsRef = useRef<TranslationState>({});
+  const currentPageRef = useRef<number>(1);
   const [activeTranslation, setActiveTranslation] = useState<{page: number, content: string, status: string} | null>(null);
   const translatingPagesRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     translationsRef.current = translations;
   }, [translations]);
+
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
 
   // Sync currentJob with currentPage (Virtual Job)
   useEffect(() => {
@@ -382,6 +387,98 @@ export default function App() {
       setIsTranslating(false);
     }
   }, [currentPage, translationService]);
+
+  const preTranslatePage = useCallback(async (pageNum: number) => {
+    if (!pdfDoc || !translationService.current || pageNum > numPages) return;
+
+    // Avoid double translation
+    const currentStatus = translationsRef.current[pageNum]?.status;
+    if (translatingPagesRef.current.has(pageNum) || (currentStatus === 'loading' || currentStatus === 'success')) {
+      return;
+    }
+
+    translatingPagesRef.current.add(pageNum);
+    
+    try {
+      const page = await pdfDoc.getPage(pageNum);
+      // Use a fixed scale for pre-translation OCR to ensure consistency and quality
+      const viewport = page.getViewport({ scale: 2 }); 
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const context = canvas.getContext('2d');
+      
+      if (context) {
+        const renderTask = page.render({
+          canvasContext: context,
+          viewport: viewport,
+        } as any);
+        await renderTask.promise;
+        
+        const imageBuffer = canvas.toDataURL('image/jpeg', 0.75);
+        const stream = translationService.current.translateMedicalPageStream({
+          imageBuffer,
+          pageNumber: pageNum
+        });
+        
+        let fullContent = "";
+        let lastUpdateTime = Date.now();
+        const UPDATE_INTERVAL = 150;
+
+        for await (const chunk of stream) {
+          fullContent += chunk;
+          const now = Date.now();
+          if (now - lastUpdateTime > UPDATE_INTERVAL) {
+            // If the user has moved to this page while it was being pre-translated, show progress
+            if (pageNum === currentPageRef.current) {
+              setActiveTranslation({ page: pageNum, content: fullContent, status: 'loading' });
+              setIsTranslating(true);
+            }
+            lastUpdateTime = now;
+          }
+        }
+        
+        // Final update if it's the current page
+        if (pageNum === currentPageRef.current) {
+          setActiveTranslation({ page: pageNum, content: fullContent, status: 'loading' });
+          setIsTranslating(true);
+        }
+        
+        const finalResult = { content: fullContent, status: 'success' as const };
+        setTranslations(prev => ({ ...prev, [pageNum]: finalResult }));
+        
+        // Clear active translation if it was this page
+        if (pageNum === currentPageRef.current) {
+          setActiveTranslation(null);
+          setIsTranslating(false);
+        }
+      }
+      
+      page.cleanup();
+    } catch (error) {
+      console.error(`Pre-translation error for page ${pageNum}:`, error);
+    } finally {
+      translatingPagesRef.current.delete(pageNum);
+      // If it was the current page, reset global translating state
+      if (pageNum === currentPageRef.current) {
+        setIsTranslating(false);
+      }
+    }
+  }, [pdfDoc, numPages, translationService]);
+
+  useEffect(() => {
+    if (pdfDoc && autoTranslate && translations[currentPage]?.status === 'success' && currentPage < numPages) {
+      const nextPage = currentPage + 1;
+      // Pre-translate next page if not already translated or translating
+      if (!translations[nextPage] && !translatingPagesRef.current.has(nextPage)) {
+        const timer = setTimeout(() => {
+          preTranslatePage(nextPage);
+        }, 1000); // Wait a bit after current page is done to avoid API rate limits
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [currentPage, pdfDoc, autoTranslate, translations, numPages, preTranslatePage]);
 
   useEffect(() => {
     const key = engineKeys[selectedEngine];
