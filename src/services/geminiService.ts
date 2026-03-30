@@ -137,11 +137,15 @@ export class GeminiService implements TranslationService {
         const isQuotaError = error.message?.toLowerCase().includes("quota") || 
                            error.message?.toLowerCase().includes("429") ||
                            error.message?.toLowerCase().includes("resource_exhausted");
+        const isUnavailableError = error.message?.toLowerCase().includes("unavailable") || 
+                                 error.message?.toLowerCase().includes("503") ||
+                                 error.message?.toLowerCase().includes("high demand");
         
-        if (isQuotaError && retryCount < MAX_RETRIES) {
+        if ((isQuotaError || isUnavailableError) && retryCount < MAX_RETRIES) {
           retryCount++;
           const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
-          console.warn(`Quota exceeded. Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${MAX_RETRIES})`);
+          const errorType = isQuotaError ? "Quota exceeded" : "Model unavailable (503)";
+          console.warn(`${errorType}. Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${MAX_RETRIES})`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
@@ -153,6 +157,9 @@ export class GeminiService implements TranslationService {
         }
         if (isQuotaError) {
           throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc chuyển sang model 'Gemini 2.0 Flash' trong phần Cài đặt để tiếp tục.");
+        }
+        if (isUnavailableError) {
+          throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát hoặc chuyển sang model 'Gemini 2.0 Flash'.");
         }
         throw new Error(`Lỗi dịch thuật: ${error.message || "Không rõ nguyên nhân"}`);
       }
@@ -228,11 +235,15 @@ export class GeminiService implements TranslationService {
         const isQuotaError = error.message?.toLowerCase().includes("quota") || 
                            error.message?.toLowerCase().includes("429") ||
                            error.message?.toLowerCase().includes("resource_exhausted");
+        const isUnavailableError = error.message?.toLowerCase().includes("unavailable") || 
+                                 error.message?.toLowerCase().includes("503") ||
+                                 error.message?.toLowerCase().includes("high demand");
         
-        if (isQuotaError && retryCount < MAX_RETRIES) {
+        if ((isQuotaError || isUnavailableError) && retryCount < MAX_RETRIES) {
           retryCount++;
           const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
-          console.warn(`Quota exceeded. Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${MAX_RETRIES})`);
+          const errorType = isQuotaError ? "Quota exceeded" : "Model unavailable (503)";
+          console.warn(`${errorType}. Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${MAX_RETRIES})`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
@@ -244,6 +255,9 @@ export class GeminiService implements TranslationService {
         }
         if (isQuotaError) {
           throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc chuyển sang model 'Gemini 2.0 Flash' trong phần Cài đặt để tiếp tục.");
+        }
+        if (isUnavailableError) {
+          throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát hoặc chuyển sang model 'Gemini 2.0 Flash'.");
         }
         throw new Error(`Lỗi dịch thuật: ${error.message || "Không rõ nguyên nhân"}`);
       }
@@ -322,17 +336,24 @@ export class GeminiService implements TranslationService {
         const isQuotaError = error.message?.toLowerCase().includes("quota") || 
                            error.message?.toLowerCase().includes("429") ||
                            error.message?.toLowerCase().includes("resource_exhausted");
+        const isUnavailableError = error.message?.toLowerCase().includes("unavailable") || 
+                                 error.message?.toLowerCase().includes("503") ||
+                                 error.message?.toLowerCase().includes("high demand");
         
-        if (isQuotaError && retryCount < MAX_RETRIES) {
+        if ((isQuotaError || isUnavailableError) && retryCount < MAX_RETRIES) {
           retryCount++;
           const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
-          console.warn(`Quota exceeded for lookup. Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${MAX_RETRIES})`);
+          const errorType = isQuotaError ? "Quota exceeded" : "Model unavailable (503)";
+          console.warn(`${errorType} for lookup. Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${MAX_RETRIES})`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
 
         if (isQuotaError) {
           throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc chuyển sang model 'Gemini 2.0 Flash' trong phần Cài đặt để tiếp tục.");
+        }
+        if (isUnavailableError) {
+          throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát hoặc chuyển sang model 'Gemini 2.0 Flash'.");
         }
         throw new Error(`Lỗi tra cứu: ${error.message || "Không rõ nguyên nhân"}`);
       }
