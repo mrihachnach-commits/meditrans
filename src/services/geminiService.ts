@@ -265,14 +265,15 @@ export class GeminiService implements TranslationService {
     }
 
     const systemInstruction = `
-      Bạn là một chuyên gia từ điển y khoa cao cấp, đặc biệt am hiểu về Nhãn khoa (Ophthalmology).
-      Nhiệm vụ của bạn là cung cấp định nghĩa cực kỳ chính xác, từ đồng nghĩa và các thuật ngữ liên quan cho một thuật ngữ y khoa được cung cấp.
+      Bạn là một chuyên gia ngôn ngữ và từ điển y khoa cao cấp.
+      Nhiệm vụ của bạn là cung cấp định nghĩa chính xác, dịch nghĩa, từ đồng nghĩa và các thuật ngữ liên quan cho từ hoặc cụm từ được cung cấp.
       
       YÊU CẦU:
       1. Ngôn ngữ: Tiếng Việt.
-      2. Định nghĩa phải mang tính chuyên môn y khoa nhưng dễ hiểu.
-      3. Nếu thuật ngữ có nhiều nghĩa, hãy ưu tiên nghĩa trong lĩnh vực Nhãn khoa.
-      4. Tuyệt đối không được bịa đặt thông tin. Nếu không biết, hãy trả về định nghĩa chung nhất hoặc thông báo không tìm thấy.
+      2. Nếu là thuật ngữ y khoa (đặc biệt là Nhãn khoa), hãy cung cấp định nghĩa chuyên môn sâu.
+      3. Nếu là từ ngữ thông thường, hãy dịch nghĩa và giải thích cách dùng trong ngữ cảnh y khoa nếu có.
+      4. Cung cấp các từ đồng nghĩa và thuật ngữ liên quan để người dùng hiểu rõ hơn.
+      5. Tuyệt đối không được bịa đặt thông tin.
     `;
 
     const prompt = `Hãy tra cứu thuật ngữ y khoa sau: "${term}"`;
