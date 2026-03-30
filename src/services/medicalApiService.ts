@@ -17,6 +17,11 @@ export class MedicalApiService implements TranslationService {
   }
 
   async *translateMedicalPageStream(options: TranslationOptions): AsyncGenerator<string> {
+    const { signal } = options;
+    if (signal?.aborted) {
+      throw new Error("Translation aborted");
+    }
+
     if (!this.apiKey) {
       throw new Error("Medical Specialized API Key is required.");
     }
@@ -33,6 +38,9 @@ export class MedicalApiService implements TranslationService {
     ];
 
     for (const chunk of mockResponse) {
+      if (signal?.aborted) {
+        throw new Error("Translation aborted");
+      }
       await new Promise(resolve => setTimeout(resolve, 100));
       yield chunk;
     }

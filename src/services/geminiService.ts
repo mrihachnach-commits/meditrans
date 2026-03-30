@@ -54,7 +54,12 @@ export class GeminiService implements TranslationService {
   }
 
   async *translateMedicalPageStream(options: TranslationOptions): AsyncGenerator<string> {
-    const { imageBuffer, pageNumber } = options;
+    const { imageBuffer, pageNumber, signal } = options;
+    
+    if (signal?.aborted) {
+      throw new Error("Translation aborted");
+    }
+
     // Re-check for key if not initialized (might have been selected via platform)
     if (!this.ai) {
       const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
@@ -88,6 +93,9 @@ export class GeminiService implements TranslationService {
     let retryCount = 0;
 
     while (retryCount <= MAX_RETRIES) {
+      if (signal?.aborted) {
+        throw new Error("Translation aborted");
+      }
       try {
         const response = await this.ai.models.generateContentStream({
           model: this.modelName,
@@ -119,6 +127,9 @@ export class GeminiService implements TranslationService {
 
         let fullText = "";
         for await (const chunk of response) {
+          if (signal?.aborted) {
+            throw new Error("Translation aborted");
+          }
           const chunkText = chunk.text;
           if (chunkText) {
             fullText += chunkText;
@@ -167,7 +178,12 @@ export class GeminiService implements TranslationService {
   }
 
   async translateMedicalPage(options: TranslationOptions): Promise<string> {
-    const { imageBuffer, pageNumber } = options;
+    const { imageBuffer, pageNumber, signal } = options;
+    
+    if (signal?.aborted) {
+      throw new Error("Translation aborted");
+    }
+
     // Re-check for key if not initialized (might have been selected via platform)
     if (!this.ai) {
       const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
@@ -201,6 +217,9 @@ export class GeminiService implements TranslationService {
     let retryCount = 0;
 
     while (retryCount <= MAX_RETRIES) {
+      if (signal?.aborted) {
+        throw new Error("Translation aborted");
+      }
       try {
         const response = await this.ai.models.generateContent({
           model: this.modelName,

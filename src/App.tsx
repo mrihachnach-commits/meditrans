@@ -40,7 +40,8 @@ import {
   Plus,
   Key,
   ShieldCheck,
-  User as UserIcon
+  User as UserIcon,
+  Square
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -101,6 +102,7 @@ export default function App() {
   const currentPageRef = useRef<number>(1);
   const [activeTranslation, setActiveTranslation] = useState<{page: number, content: string, status: string} | null>(null);
   const translatingPagesRef = useRef<Set<number>>(new Set());
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     translationsRef.current = translations;
@@ -474,9 +476,35 @@ export default function App() {
     fitToWidth();
   };
 
+  const cancelTranslation = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsTranslating(false);
+    setActiveTranslation(null);
+    
+    // Update status of the page being translated to error or idle
+    const targetPage = currentPage;
+    if (translatingPagesRef.current.has(targetPage)) {
+      setTranslations(prev => ({
+        ...prev,
+        [targetPage]: { ...prev[targetPage], status: 'error', content: 'Đã dừng dịch thuật.' }
+      }));
+      translatingPagesRef.current.delete(targetPage);
+    }
+  }, [currentPage]);
+
   const translateCurrentPage = useCallback(async (pageNumber?: number, force = false) => {
     const targetPage = pageNumber ?? currentPage;
     if (!canvasRef.current || !translationService.current) return;
+
+    // Abort any existing translation
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
 
     // Avoid double translation for the same page unless forced
     const currentStatus = translationsRef.current[targetPage]?.status;
@@ -534,7 +562,8 @@ export default function App() {
       const imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.75); // Slightly lower quality for faster upload
       const stream = translationService.current.translateMedicalPageStream({
         imageBuffer,
-        pageNumber: targetPage
+        pageNumber: targetPage,
+        signal
       });
       
       let fullContent = "";
@@ -557,6 +586,10 @@ export default function App() {
       setTranslations(prev => ({ ...prev, [targetPage]: finalResult }));
       setActiveTranslation(null);
     } catch (error: any) {
+      if (error.message === "Translation aborted") {
+        console.log("Translation aborted by user");
+        return;
+      }
       console.error("Translation Error:", error);
       const errorMessage = error instanceof Error ? error.message : 'Dịch thuật thất bại.';
       const errorResult = { content: errorMessage, status: 'error' as const };
@@ -564,7 +597,10 @@ export default function App() {
       setActiveTranslation(null);
     } finally {
       translatingPagesRef.current.delete(targetPage);
-      setIsTranslating(false);
+      if (abortControllerRef.current?.signal === signal) {
+        setIsTranslating(false);
+        abortControllerRef.current = null;
+      }
     }
   }, [currentPage, translationService]);
 
@@ -1258,6 +1294,19 @@ export default function App() {
                   
                   <div className="h-4 w-px bg-slate-200" />
                   
+                  {isTranslating && (
+                    <button 
+                      onClick={cancelTranslation}
+                      className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-rose-50 border border-rose-100 text-rose-600 hover:bg-rose-100 transition-all"
+                      title="Dừng dịch thuật"
+                    >
+                      <Square className="w-2.5 h-2.5 fill-current" />
+                      <span className="text-[9px] font-black uppercase tracking-tight">Dừng</span>
+                    </button>
+                  )}
+
+                  {isTranslating && <div className="h-4 w-px bg-slate-200" />}
+
                   <button 
                     onClick={() => setAutoTranslate(!autoTranslate)}
                     className={cn(
@@ -1382,7 +1431,13 @@ export default function App() {
                       </div>
                       <div className="text-center">
                         <p className="text-sm font-bold text-slate-700">Đang phân tích y khoa...</p>
-                        <p className="text-xs text-slate-400">Gemini đang xử lý hình ảnh và văn bản</p>
+                        <p className="text-xs text-slate-400 mb-4">Gemini đang xử lý hình ảnh và văn bản</p>
+                        <button 
+                          onClick={cancelTranslation}
+                          className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-rose-50 hover:text-rose-600 transition-all border border-slate-200"
+                        >
+                          Dừng dịch
+                        </button>
                       </div>
                     </motion.div>
                   ) : translations[currentPage]?.status === 'error' ? (
@@ -1445,9 +1500,18 @@ export default function App() {
                           : translations[currentPage]?.content || ''}
                       </ReactMarkdown>
                       {activeTranslation && activeTranslation.page === currentPage && (
-                        <div className="mt-4 flex items-center gap-2 text-indigo-400 italic text-xs animate-pulse">
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          <span>Đang dịch...</span>
+                        <div className="mt-4 flex flex-col gap-3">
+                          <div className="flex items-center gap-2 text-indigo-400 italic text-xs animate-pulse">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>Đang dịch...</span>
+                          </div>
+                          <button 
+                            onClick={cancelTranslation}
+                            className="w-fit px-3 py-1.5 bg-slate-50 text-slate-500 rounded-lg text-[10px] font-bold hover:bg-rose-50 hover:text-rose-600 transition-all border border-slate-100 flex items-center gap-1.5"
+                          >
+                            <Square className="w-2.5 h-2.5 fill-current" />
+                            Dừng dịch trang này
+                          </button>
                         </div>
                       )}
                     </motion.div>
