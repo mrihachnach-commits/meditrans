@@ -111,11 +111,17 @@ export const MedicalDictionary: React.FC<MedicalDictionaryProps> = ({
               <p className="text-xs font-medium italic">Đang tra cứu "{selectedTerm}"...</p>
             </div>
           ) : error ? (
-            <div className="py-8 text-center">
-              <p className="text-sm text-rose-500 font-medium">{error}</p>
+            <div className="py-8 px-4 text-center">
+              <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100 mb-4">
+                <p className="text-sm text-rose-600 font-medium leading-relaxed">
+                  {error.includes("hạn mức sử dụng API") 
+                    ? error 
+                    : (error.startsWith('{') ? "Lỗi hệ thống: Vui lòng thử lại sau hoặc đổi model dịch thuật." : error)}
+                </p>
+              </div>
               <button 
                 onClick={onClose}
-                className="mt-4 text-xs font-bold text-slate-400 hover:text-slate-600 uppercase"
+                className="text-xs font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest"
               >
                 Đóng
               </button>

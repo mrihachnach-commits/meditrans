@@ -152,7 +152,7 @@ export class GeminiService implements TranslationService {
           throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
         }
         if (isQuotaError) {
-          throw new Error("Hết hạn mức API (Quota exceeded). Vui lòng thử lại sau hoặc sử dụng API Key khác.");
+          throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc chuyển sang model 'Gemini 2.0 Flash' trong phần Cài đặt để tiếp tục.");
         }
         throw new Error(`Lỗi dịch thuật: ${error.message || "Không rõ nguyên nhân"}`);
       }
@@ -243,7 +243,7 @@ export class GeminiService implements TranslationService {
           throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
         }
         if (isQuotaError) {
-          throw new Error("Hết hạn mức API (Quota exceeded). Vui lòng thử lại sau hoặc sử dụng API Key khác.");
+          throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc chuyển sang model 'Gemini 2.0 Flash' trong phần Cài đặt để tiếp tục.");
         }
         throw new Error(`Lỗi dịch thuật: ${error.message || "Không rõ nguyên nhân"}`);
       }
@@ -331,7 +331,9 @@ export class GeminiService implements TranslationService {
           continue;
         }
 
-        console.error("Gemini Lookup Error:", error);
+        if (isQuotaError) {
+          throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc chuyển sang model 'Gemini 2.0 Flash' trong phần Cài đặt để tiếp tục.");
+        }
         throw new Error(`Lỗi tra cứu: ${error.message || "Không rõ nguyên nhân"}`);
       }
     }

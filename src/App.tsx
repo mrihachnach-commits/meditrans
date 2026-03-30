@@ -1143,8 +1143,8 @@ export default function App() {
                     </label>
                     <div className="grid grid-cols-1 gap-3">
                       {[
-                        { id: 'gemini-flash', name: 'Gemini 2.0 Flash', desc: 'Nhanh, hiệu quả, phù hợp đa số tài liệu.', tag: 'Nhanh nhất', tagColor: 'bg-green-100 text-green-700' },
-                        { id: 'gemini-pro', name: 'Gemini 1.5 Pro', desc: 'Chính xác cao, xử lý ngữ cảnh phức tạp tốt hơn.', tag: 'Chính xác cao', tagColor: 'bg-amber-100 text-amber-700' },
+                        { id: 'gemini-flash', name: 'Gemini 2.0 Flash', desc: 'Nhanh nhất, hạn mức sử dụng cao (Khuyên dùng).', tag: 'Nhanh nhất', tagColor: 'bg-green-100 text-green-700' },
+                        { id: 'gemini-pro', name: 'Gemini 1.5 Pro', desc: 'Chính xác cao, nhưng hạn mức sử dụng thấp hơn.', tag: 'Chính xác cao', tagColor: 'bg-amber-100 text-amber-700' },
                         { id: 'medical-specialized', name: 'Medical Specialized API', desc: 'API chuyên dụng cho thuật ngữ y khoa (Mô phỏng).' }
                       ].map((engine) => (
                         <button
