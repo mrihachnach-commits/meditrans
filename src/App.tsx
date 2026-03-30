@@ -468,14 +468,17 @@ export default function App() {
   }, [pdfDoc, numPages, translationService]);
 
   useEffect(() => {
-    if (pdfDoc && autoTranslate && translations[currentPage]?.status === 'success' && currentPage < numPages) {
-      const nextPage = currentPage + 1;
-      // Pre-translate next page if not already translated or translating
-      if (!translations[nextPage] && !translatingPagesRef.current.has(nextPage)) {
-        const timer = setTimeout(() => {
-          preTranslatePage(nextPage);
-        }, 1000); // Wait a bit after current page is done to avoid API rate limits
-        return () => clearTimeout(timer);
+    if (pdfDoc && autoTranslate && translations[currentPage]?.status === 'success') {
+      // Look ahead up to 2 pages to maintain a buffer
+      const pagesToBuffer = [currentPage + 1, currentPage + 2];
+      
+      for (const pageNum of pagesToBuffer) {
+        if (pageNum <= numPages && !translations[pageNum] && !translatingPagesRef.current.has(pageNum)) {
+          const timer = setTimeout(() => {
+            preTranslatePage(pageNum);
+          }, 300); // Aggressive 300ms delay for better responsiveness
+          return () => clearTimeout(timer);
+        }
       }
     }
   }, [currentPage, pdfDoc, autoTranslate, translations, numPages, preTranslatePage]);
