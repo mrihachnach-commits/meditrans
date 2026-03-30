@@ -532,11 +532,9 @@ export default function App() {
       return;
     }
 
-    translatingPagesRef.current.add(targetPage);
-    setIsTranslating(true);
-    
     // Set active translation for smooth streaming without re-rendering the whole list
     setActiveTranslation({ page: targetPage, content: '', status: 'loading' });
+    setIsTranslating(true);
 
     try {
       // Create a temporary canvas for optimized capture
@@ -604,8 +602,10 @@ export default function App() {
     }
   }, [currentPage, translationService]);
 
-  const preTranslatePage = useCallback(async (pageNum: number) => {
+  const preTranslatePage = useCallback(async (pageNum: number, signal?: AbortSignal) => {
     if (!pdfDoc || !translationService.current || pageNum > numPages) return;
+
+    if (signal?.aborted) return;
 
     // Avoid double translation
     const currentStatus = translationsRef.current[pageNum]?.status;
@@ -617,6 +617,11 @@ export default function App() {
     
     try {
       const page = await pdfDoc.getPage(pageNum);
+      if (signal?.aborted) {
+        page.cleanup();
+        return;
+      }
+
       // Use a fixed scale for pre-translation OCR to ensure consistency and quality
       const viewport = page.getViewport({ scale: 2 }); 
       
@@ -630,12 +635,23 @@ export default function App() {
           canvasContext: context,
           viewport: viewport,
         } as any);
+        
+        if (signal) {
+          signal.addEventListener('abort', () => renderTask.cancel());
+        }
+
         await renderTask.promise;
         
+        if (signal?.aborted) {
+          page.cleanup();
+          return;
+        }
+
         const imageBuffer = canvas.toDataURL('image/jpeg', 0.75);
         const stream = translationService.current.translateMedicalPageStream({
           imageBuffer,
-          pageNumber: pageNum
+          pageNumber: pageNum,
+          signal
         });
         
         let fullContent = "";
@@ -643,6 +659,7 @@ export default function App() {
         const UPDATE_INTERVAL = 150;
 
         for await (const chunk of stream) {
+          if (signal?.aborted) break;
           fullContent += chunk;
           const now = Date.now();
           if (now - lastUpdateTime > UPDATE_INTERVAL) {
@@ -655,6 +672,8 @@ export default function App() {
           }
         }
         
+        if (signal?.aborted) return;
+
         // Final update if it's the current page
         if (pageNum === currentPageRef.current) {
           setActiveTranslation({ page: pageNum, content: fullContent, status: 'loading' });
@@ -672,8 +691,10 @@ export default function App() {
       }
       
       page.cleanup();
-    } catch (error) {
-      console.error(`Pre-translation error for page ${pageNum}:`, error);
+    } catch (error: any) {
+      if (error.message !== "Translation aborted") {
+        console.error(`Pre-translation error for page ${pageNum}:`, error);
+      }
     } finally {
       translatingPagesRef.current.delete(pageNum);
       // If it was the current page, reset global translating state
@@ -684,20 +705,25 @@ export default function App() {
   }, [pdfDoc, numPages, translationService]);
 
   useEffect(() => {
-    if (pdfDoc && autoTranslate && translations[currentPage]?.status === 'success') {
+    if (pdfDoc && autoTranslate && translations[currentPage]?.status === 'success' && !isTranslating) {
       // Look ahead up to 2 pages to maintain a buffer
       const pagesToBuffer = [currentPage + 1, currentPage + 2];
       
       for (const pageNum of pagesToBuffer) {
         if (pageNum <= numPages && !translations[pageNum] && !translatingPagesRef.current.has(pageNum)) {
+          const controller = new AbortController();
           const timer = setTimeout(() => {
-            preTranslatePage(pageNum);
-          }, 300); // Aggressive 300ms delay for better responsiveness
-          return () => clearTimeout(timer);
+            preTranslatePage(pageNum, controller.signal);
+          }, 1500); // Increased delay to prioritize current page and user actions
+          
+          return () => {
+            clearTimeout(timer);
+            controller.abort();
+          };
         }
       }
     }
-  }, [currentPage, pdfDoc, autoTranslate, translations, numPages, preTranslatePage]);
+  }, [currentPage, pdfDoc, autoTranslate, translations, numPages, preTranslatePage, isTranslating]);
 
   useEffect(() => {
     let key = engineKeys[selectedEngine];
@@ -747,7 +773,7 @@ export default function App() {
         if (!isRenderingRef.current && !translationsRef.current[currentPage]) {
           translateCurrentPage(currentPage);
         }
-      }, 800); // Reduced from 1500ms for better responsiveness
+      }, 400); // Reduced delay to prioritize current page
       return () => clearTimeout(timer);
     }
   }, [currentPage, pdfDoc, autoTranslate, isRendering, translations, translateCurrentPage]);
