@@ -1,10 +1,12 @@
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
+import { TranslationService, TranslationOptions } from "./translationService";
 
-export class GeminiService {
+export class GeminiService implements TranslationService {
   private ai: any;
-  private modelName: string = "gemini-3-flash-preview"; 
+  private modelName: string;
 
-  constructor(apiKey?: string) {
+  constructor(apiKey?: string, modelName: string = "gemini-3-flash-preview") {
+    this.modelName = modelName;
     // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
     const key = (apiKey && apiKey.trim() !== "") ? apiKey : envKey;
@@ -13,7 +15,7 @@ export class GeminiService {
     if (key && key !== "MY_GEMINI_API_KEY" && key.trim() !== "") {
       try {
         this.ai = new GoogleGenAI({ apiKey: key });
-        console.log("GeminiService initialized with API Key.");
+        console.log(`GeminiService initialized with model ${modelName} and API Key.`);
       } catch (e) {
         console.error("Failed to initialize GoogleGenAI:", e);
       }
@@ -51,7 +53,8 @@ export class GeminiService {
     }
   }
 
-  async *translateMedicalPageStream(imageBuffer: string, pageNumber: number): AsyncGenerator<string> {
+  async *translateMedicalPageStream(options: TranslationOptions): AsyncGenerator<string> {
+    const { imageBuffer, pageNumber } = options;
     // Re-check for key if not initialized (might have been selected via platform)
     if (!this.ai) {
       const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
@@ -156,7 +159,8 @@ export class GeminiService {
     }
   }
 
-  async translateMedicalPage(imageBuffer: string, pageNumber: number): Promise<string> {
+  async translateMedicalPage(options: TranslationOptions): Promise<string> {
+    const { imageBuffer, pageNumber } = options;
     // Re-check for key if not initialized (might have been selected via platform)
     if (!this.ai) {
       const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;

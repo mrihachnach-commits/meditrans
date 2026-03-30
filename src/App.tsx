@@ -42,6 +42,8 @@ import remarkGfm from 'remark-gfm';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { GeminiService } from './services/geminiService';
+import { MedicalApiService } from './services/medicalApiService';
+import { TranslationEngine, TranslationService } from './services/translationService';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -84,28 +86,42 @@ export default function App() {
   }, [currentPage, numPages, currentJob]);
 
   const [isTranslating, setIsTranslating] = useState(false);
-  const [apiKey, setApiKey] = useState<string>(() => {
-    const saved = localStorage.getItem('gemini_api_key');
-    if (saved) return saved;
-    // Check if environment key is not a placeholder
-    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
-      return envKey;
+  const [selectedEngine, setSelectedEngine] = useState<TranslationEngine>(() => {
+    const saved = localStorage.getItem('selected_engine');
+    return (saved as TranslationEngine) || 'gemini-flash';
+  });
+  const [engineKeys, setEngineKeys] = useState<Record<TranslationEngine, string>>(() => {
+    const saved = localStorage.getItem('engine_keys');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse engine keys:", e);
+      }
     }
-    return '';
+    
+    // Initial defaults
+    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    const defaultKey = (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") ? envKey : '';
+    
+    return {
+      'gemini-flash': defaultKey,
+      'gemini-pro': defaultKey,
+      'medical-specialized': ''
+    };
   });
   const [showSettings, setShowSettings] = useState(false);
   const [hasEnvKey, setHasEnvKey] = useState(false);
 
   useEffect(() => {
     const checkKey = async () => {
-      if (geminiService.current) {
-        const hasKey = await geminiService.current.hasApiKey();
+      if (translationService.current) {
+        const hasKey = await translationService.current.hasApiKey();
         setHasEnvKey(hasKey);
       }
     };
     checkKey();
-  }, [apiKey]);
+  }, [selectedEngine, engineKeys]);
 
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [autoTranslate, setAutoTranslate] = useState(false);
@@ -148,7 +164,7 @@ export default function App() {
   const textLayerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<any>(null);
-  const geminiService = useRef<GeminiService | null>(null);
+  const translationService = useRef<TranslationService | null>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -275,7 +291,7 @@ export default function App() {
 
   const translateCurrentPage = useCallback(async (pageNumber?: number, force = false) => {
     const targetPage = pageNumber ?? currentPage;
-    if (!canvasRef.current || !geminiService.current) return;
+    if (!canvasRef.current || !translationService.current) return;
 
     // Avoid double translation for the same page unless forced
     const currentStatus = translationsRef.current[targetPage]?.status;
@@ -291,7 +307,7 @@ export default function App() {
     }
     
     // Check if we have an API key before starting
-    const hasKey = await geminiService.current.hasApiKey();
+    const hasKey = await translationService.current.hasApiKey();
     if (!hasKey) {
       setTranslations(prev => ({
         ...prev,
@@ -312,7 +328,10 @@ export default function App() {
     try {
       await new Promise(resolve => setTimeout(resolve, 200));
       const imageBuffer = canvasRef.current.toDataURL('image/jpeg', 0.8);
-      const stream = geminiService.current.translateMedicalPageStream(imageBuffer, targetPage);
+      const stream = translationService.current.translateMedicalPageStream({
+        imageBuffer,
+        pageNumber: targetPage
+      });
       
       let fullContent = "";
       for await (const chunk of stream) {
@@ -333,11 +352,18 @@ export default function App() {
       translatingPagesRef.current.delete(targetPage);
       setIsTranslating(false);
     }
-  }, [currentPage, geminiService]);
+  }, [currentPage, translationService]);
 
   useEffect(() => {
-    geminiService.current = new GeminiService(apiKey);
-  }, [apiKey]);
+    const key = engineKeys[selectedEngine];
+    if (selectedEngine === 'gemini-flash') {
+      translationService.current = new GeminiService(key, "gemini-3-flash-preview");
+    } else if (selectedEngine === 'gemini-pro') {
+      translationService.current = new GeminiService(key, "gemini-3.1-pro-preview");
+    } else if (selectedEngine === 'medical-specialized') {
+      translationService.current = new MedicalApiService(key);
+    }
+  }, [selectedEngine, engineKeys]);
 
   useEffect(() => {
     if (pdfDoc) {
@@ -533,11 +559,23 @@ export default function App() {
     }, 50);
   };
 
-  const saveApiKey = (key: string) => {
-    setApiKey(key);
-    localStorage.setItem('gemini_api_key', key);
+  const saveSettings = (engine: TranslationEngine, keys: Record<TranslationEngine, string>) => {
+    setSelectedEngine(engine);
+    setEngineKeys(keys);
+    localStorage.setItem('selected_engine', engine);
+    localStorage.setItem('engine_keys', JSON.stringify(keys));
     setShowSettings(false);
   };
+
+  const [tempEngine, setTempEngine] = useState<TranslationEngine>(selectedEngine);
+  const [tempKeys, setTempKeys] = useState<Record<TranslationEngine, string>>(engineKeys);
+
+  useEffect(() => {
+    if (showSettings) {
+      setTempEngine(selectedEngine);
+      setTempKeys(engineKeys);
+    }
+  }, [showSettings, selectedEngine, engineKeys]);
 
   return (
     <div className={cn("h-screen flex flex-col bg-slate-50 overflow-hidden", isFullScreen && "fixed inset-0 z-50")}>
@@ -902,7 +940,7 @@ export default function App() {
                       </>
                     )}
                   </button>
-                  {!apiKey && !hasEnvKey && (
+                  {!engineKeys[selectedEngine] && !hasEnvKey && (
                     <div className="absolute top-full right-0 mt-2 p-3 bg-rose-50 border border-rose-100 rounded-xl shadow-xl z-50 w-64">
                       <div className="flex gap-2 text-rose-600 mb-1">
                         <AlertCircle className="w-4 h-4 shrink-0" />
@@ -981,8 +1019,10 @@ export default function App() {
                         {(window as any).aistudio?.openSelectKey && (
                           <button 
                             onClick={async () => {
-                              await geminiService.current?.openKeySelection();
-                              translateCurrentPage(currentPage, true);
+                              if (translationService.current instanceof GeminiService) {
+                                await (translationService.current as any).openKeySelection();
+                                translateCurrentPage(currentPage, true);
+                              }
                             }}
                             className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
                           >
@@ -1039,7 +1079,7 @@ export default function App() {
         <MedicalDictionary 
           selectedTerm={selectedTerm}
           onClose={() => setSelectedTerm(null)}
-          geminiService={geminiService.current}
+          translationService={translationService.current}
           position={dictionaryPosition}
         />
       )}
@@ -1059,43 +1099,81 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
+              className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden"
             >
               <div className="p-8">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="bg-indigo-100 p-2 rounded-xl">
                     <Settings className="text-indigo-600 w-5 h-5" />
                   </div>
-                  <h3 className="text-xl font-display font-bold text-slate-800">Cấu hình API</h3>
+                  <h3 className="text-xl font-display font-bold text-slate-800">Cấu hình Translation Engine</h3>
                 </div>
                 
-                <div className="space-y-4">
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
+                      Chọn Engine Dịch thuật
+                    </label>
+                    <div className="grid grid-cols-1 gap-3">
+                      {[
+                        { id: 'gemini-flash', name: 'Gemini 2.0 Flash', desc: 'Nhanh, hiệu quả, phù hợp đa số tài liệu.' },
+                        { id: 'gemini-pro', name: 'Gemini 1.5 Pro', desc: 'Chính xác cao, xử lý ngữ cảnh phức tạp tốt hơn.' },
+                        { id: 'medical-specialized', name: 'Medical Specialized API', desc: 'API chuyên dụng cho thuật ngữ y khoa (Mô phỏng).' }
+                      ].map((engine) => (
+                        <button
+                          key={engine.id}
+                          onClick={() => setTempEngine(engine.id as TranslationEngine)}
+                          className={cn(
+                            "flex flex-col items-start p-4 rounded-2xl border-2 transition-all text-left",
+                            tempEngine === engine.id 
+                              ? "border-indigo-600 bg-indigo-50/50" 
+                              : "border-slate-100 hover:border-slate-200 bg-white"
+                          )}
+                        >
+                          <div className="flex items-center justify-between w-full mb-1">
+                            <span className={cn("font-bold text-sm", tempEngine === engine.id ? "text-indigo-700" : "text-slate-700")}>
+                              {engine.name}
+                            </span>
+                            {tempEngine === engine.id && <CheckCircle2 className="w-4 h-4 text-indigo-600" />}
+                          </div>
+                          <span className="text-[10px] text-slate-500 leading-tight">{engine.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
-                      Gemini API Key
+                      API Key cho {tempEngine === 'medical-specialized' ? 'Medical API' : 'Gemini'}
                     </label>
                     <input 
                       type="password"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      placeholder="Nhập API Key của bạn (Tùy chọn)..."
+                      value={tempKeys[tempEngine]}
+                      onChange={(e) => setTempKeys(prev => ({ ...prev, [tempEngine]: e.target.value }))}
+                      placeholder={`Nhập API Key cho ${tempEngine}...`}
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm"
                     />
-                    <div className="mt-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-                      <p className="text-[10px] text-indigo-700 leading-relaxed">
-                        <span className="font-bold">Chế độ Tự động:</span> Nếu để trống, ứng dụng sẽ sử dụng API Key mặc định của hệ thống. Bạn chỉ cần nhập nếu muốn sử dụng hạn mức riêng.
-                      </p>
-                    </div>
-                    {(window as any).aistudio?.openSelectKey && (
+                    
+                    {tempEngine.startsWith('gemini') && (
+                      <div className="mt-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                        <p className="text-[10px] text-indigo-700 leading-relaxed">
+                          <span className="font-bold">Ghi chú:</span> Nếu để trống, ứng dụng sẽ sử dụng API Key mặc định từ hệ thống (nếu có).
+                        </p>
+                      </div>
+                    )}
+
+                    {tempEngine.startsWith('gemini') && (window as any).aistudio?.openSelectKey && (
                       <button 
                         onClick={async () => {
-                          await geminiService.current?.openKeySelection();
-                          setShowSettings(false);
+                          if (translationService.current instanceof GeminiService) {
+                            await (translationService.current as any).openKeySelection();
+                            setShowSettings(false);
+                          }
                         }}
-                        className="mt-4 w-full px-4 py-3 bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold hover:bg-indigo-200 transition-all flex items-center justify-center gap-2"
+                        className="mt-3 w-full px-4 py-2.5 bg-indigo-100 text-indigo-700 rounded-xl text-[10px] font-bold hover:bg-indigo-200 transition-all flex items-center justify-center gap-2"
                       >
-                        <Settings className="w-4 h-4" />
-                        Chọn API Key từ AI Studio
+                        <Settings className="w-3.5 h-3.5" />
+                        Sử dụng API Key từ AI Studio
                       </button>
                     )}
                   </div>
@@ -1108,10 +1186,10 @@ export default function App() {
                       Hủy
                     </button>
                     <button 
-                      onClick={() => saveApiKey(apiKey)}
+                      onClick={() => saveSettings(tempEngine, tempKeys)}
                       className="flex-1 px-6 py-3 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
                     >
-                      Lưu thay đổi
+                      Lưu cấu hình
                     </button>
                   </div>
                 </div>

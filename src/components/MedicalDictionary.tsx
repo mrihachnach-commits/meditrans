@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Book, Loader2, ExternalLink, Copy, Check } from 'lucide-react';
-import { GeminiService } from '../services/geminiService';
+import { TranslationService } from '../services/translationService';
 import { cn } from '../lib/utils';
 
 interface MedicalTermInfo {
@@ -15,14 +15,14 @@ interface MedicalTermInfo {
 interface MedicalDictionaryProps {
   selectedTerm: string;
   onClose: () => void;
-  geminiService: GeminiService | null;
+  translationService: TranslationService | null;
   position: { x: number; y: number };
 }
 
 export const MedicalDictionary: React.FC<MedicalDictionaryProps> = ({ 
   selectedTerm, 
   onClose, 
-  geminiService,
+  translationService,
   position 
 }) => {
   const [info, setInfo] = useState<MedicalTermInfo | null>(null);
@@ -49,9 +49,12 @@ export const MedicalDictionary: React.FC<MedicalDictionaryProps> = ({
       setLoading(true);
       setError(null);
       try {
-        if (!geminiService) throw new Error("Gemini Service not initialized");
+        if (!translationService) throw new Error("Translation Service not initialized");
+        if (!translationService.lookupMedicalTerm) {
+          throw new Error("Tra cứu thuật ngữ không khả dụng cho engine này.");
+        }
         
-        const result = await geminiService.lookupMedicalTerm(selectedTerm);
+        const result = await translationService.lookupMedicalTerm(selectedTerm);
         setInfo(result);
       } catch (err: any) {
         console.error("Dictionary lookup error:", err);
@@ -62,7 +65,7 @@ export const MedicalDictionary: React.FC<MedicalDictionaryProps> = ({
     };
 
     lookup();
-  }, [selectedTerm, geminiService]);
+  }, [selectedTerm, translationService]);
 
   const handleCopy = () => {
     if (info) {
