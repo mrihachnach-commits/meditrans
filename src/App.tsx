@@ -34,7 +34,13 @@ import {
   Maximize,
   Type,
   ALargeSmall,
-  Type as FontIcon
+  Type as FontIcon,
+  LogIn,
+  LogOut,
+  Plus,
+  Key,
+  ShieldCheck,
+  User as UserIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -44,6 +50,30 @@ import { twMerge } from 'tailwind-merge';
 import { GeminiService } from './services/geminiService';
 import { MedicalApiService } from './services/medicalApiService';
 import { TranslationEngine, TranslationService } from './services/translationService';
+import { 
+  auth, 
+  googleProvider, 
+  signInWithPopup, 
+  signOut, 
+  onAuthStateChanged, 
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
+  db, 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  getDocs, 
+  query, 
+  where, 
+  onSnapshot, 
+  deleteDoc, 
+  updateDoc, 
+  serverTimestamp,
+  User,
+  Timestamp
+} from './firebase';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -145,6 +175,156 @@ export default function App() {
   const [fontSize, setFontSize] = useState(14);
   const [fontFamily, setFontFamily] = useState('Inter');
   
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authDisplayName, setAuthDisplayName] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const [userKeys, setUserKeys] = useState<any[]>([]);
+  const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
+  const [isAddingKey, setIsAddingKey] = useState(false);
+  const [newKey, setNewKey] = useState({ name: '', value: '', engine: 'gemini' });
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      setIsAuthReady(true);
+      
+      if (currentUser) {
+        // Ensure user profile exists in Firestore
+        const userRef = doc(db, 'users', currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) {
+          await setDoc(userRef, {
+            uid: currentUser.uid,
+            email: currentUser.email,
+            displayName: currentUser.displayName,
+            photoURL: currentUser.photoURL,
+            createdAt: serverTimestamp(),
+            role: 'user'
+          });
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      const q = query(collection(db, 'apiKeys'), where('ownerId', '==', user.uid));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const keys = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setUserKeys(keys);
+        
+        // Auto-select first key if none selected
+        if (keys.length > 0 && !selectedKeyId) {
+          setSelectedKeyId(keys[0].id);
+        }
+      });
+      return () => unsubscribe();
+    } else {
+      setUserKeys([]);
+      setSelectedKeyId(null);
+    }
+  }, [user]);
+
+  const handleLogin = async () => {
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
+    setAuthError(null);
+    try {
+      await signInWithPopup(auth, googleProvider);
+      setShowAuthModal(false);
+    } catch (error: any) {
+      if (error.code === 'auth/cancelled-popup-request') {
+        console.warn("Login popup request was cancelled as another one was already pending.");
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        console.log("User closed the login popup.");
+      } else {
+        console.error("Login failed:", error);
+        setAuthError("Đăng nhập thất bại. Vui lòng thử lại.");
+      }
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
+    setAuthError(null);
+
+    try {
+      if (authMode === 'register') {
+        const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+        await updateProfile(userCredential.user, { displayName: authDisplayName });
+        
+        // Update local user state immediately for better UX
+        setUser({ ...userCredential.user, displayName: authDisplayName } as User);
+      } else {
+        await signInWithEmailAndPassword(auth, authEmail, authPassword);
+      }
+      setShowAuthModal(false);
+      setAuthEmail('');
+      setAuthPassword('');
+      setAuthDisplayName('');
+    } catch (error: any) {
+      console.error("Email auth failed:", error);
+      if (error.code === 'auth/email-already-in-use') {
+        setAuthError("Email này đã được sử dụng.");
+      } else if (error.code === 'auth/invalid-credential') {
+        setAuthError("Email hoặc mật khẩu không chính xác.");
+      } else if (error.code === 'auth/weak-password') {
+        setAuthError("Mật khẩu quá yếu (tối thiểu 6 ký tự).");
+      } else {
+        setAuthError("Xác thực thất bại. Vui lòng kiểm tra lại thông tin.");
+      }
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
+
+  const handleAddKey = async () => {
+    if (!user || !newKey.name || !newKey.value) return;
+    try {
+      await setDoc(doc(collection(db, 'apiKeys')), {
+        ownerId: user.uid,
+        name: newKey.name,
+        value: newKey.value,
+        engine: newKey.engine,
+        createdAt: serverTimestamp(),
+        lastUsed: serverTimestamp()
+      });
+      setNewKey({ name: '', value: '', engine: 'gemini' });
+      setIsAddingKey(false);
+    } catch (error) {
+      console.error("Failed to add key:", error);
+    }
+  };
+
+  const handleDeleteKey = async (keyId: string) => {
+    try {
+      await deleteDoc(doc(db, 'apiKeys', keyId));
+      if (selectedKeyId === keyId) setSelectedKeyId(null);
+    } catch (error) {
+      console.error("Failed to delete key:", error);
+    }
+  };
+
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [selectedTerm, setSelectedTerm] = useState<string | null>(null);
   const [dictionaryPosition, setDictionaryPosition] = useState({ x: 0, y: 0 });
@@ -484,7 +664,18 @@ export default function App() {
   }, [currentPage, pdfDoc, autoTranslate, translations, numPages, preTranslatePage]);
 
   useEffect(() => {
-    const key = engineKeys[selectedEngine];
+    let key = engineKeys[selectedEngine];
+    
+    // If user is logged in and has a selected key from the vault, use it
+    if (user && selectedKeyId) {
+      const vaultKey = userKeys.find(k => k.id === selectedKeyId);
+      // Map engine types
+      const currentEngineType = selectedEngine.startsWith('gemini') ? 'gemini' : selectedEngine;
+      if (vaultKey && vaultKey.engine === currentEngineType) {
+        key = vaultKey.value;
+      }
+    }
+
     if (selectedEngine === 'gemini-flash') {
       translationService.current = new GeminiService(key, "gemini-3-flash-preview");
     } else if (selectedEngine === 'gemini-pro') {
@@ -492,7 +683,7 @@ export default function App() {
     } else if (selectedEngine === 'medical-specialized') {
       translationService.current = new MedicalApiService(key);
     }
-  }, [selectedEngine, engineKeys]);
+  }, [selectedEngine, engineKeys, user, selectedKeyId, userKeys]);
 
   useEffect(() => {
     if (pdfDoc) {
@@ -786,6 +977,48 @@ export default function App() {
           >
             {isFullScreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
+
+          <div className="h-6 w-px bg-slate-200 mx-1" />
+
+          {isAuthReady && (
+            user ? (
+              <div className="flex items-center gap-2 pl-1">
+                <div className="hidden lg:flex flex-col items-end mr-1">
+                  <span className="text-[10px] font-bold text-slate-700 leading-none">{user.displayName || 'Người dùng'}</span>
+                  <span className="text-[8px] text-slate-400 font-medium">{user.email}</span>
+                </div>
+                <div className="relative group">
+                  <img 
+                    src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || 'User'}&background=6366f1&color=fff`} 
+                    alt="Avatar" 
+                    className="w-8 h-8 rounded-full border-2 border-white shadow-sm cursor-pointer"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-2">
+                    <div className="px-3 py-2 border-b border-slate-50 mb-1">
+                      <p className="text-xs font-bold text-slate-800 truncate">{user.displayName}</p>
+                      <p className="text-[10px] text-slate-400 truncate">{user.email}</p>
+                    </div>
+                    <button 
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors text-xs font-bold"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      Đăng xuất
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setShowAuthModal(true)}
+                className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-1.5 rounded-full text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-95"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                Đăng nhập
+              </button>
+            )
+          )}
         </div>
       </header>
 
@@ -1237,6 +1470,130 @@ export default function App() {
         />
       )}
 
+      {/* Auth Modal */}
+      <AnimatePresence>
+        {showAuthModal && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowAuthModal(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-8">
+                <div className="text-center mb-8">
+                  <div className="bg-indigo-600 w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-200">
+                    <UserIcon className="text-white w-6 h-6" />
+                  </div>
+                  <h3 className="text-2xl font-display font-bold text-slate-800">
+                    {authMode === 'login' ? 'Chào mừng trở lại' : 'Tạo tài khoản mới'}
+                  </h3>
+                  <p className="text-slate-500 text-sm mt-1">
+                    {authMode === 'login' ? 'Đăng nhập để quản lý API Key của bạn' : 'Bắt đầu lưu trữ Key an toàn ngay hôm nay'}
+                  </p>
+                </div>
+
+                <form onSubmit={handleEmailAuth} className="space-y-4">
+                  {authMode === 'register' && (
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tên hiển thị</label>
+                      <input 
+                        type="text"
+                        required
+                        value={authDisplayName}
+                        onChange={(e) => setAuthDisplayName(e.target.value)}
+                        placeholder="VD: Nguyễn Văn A"
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Email</label>
+                    <input 
+                      type="email"
+                      required
+                      value={authEmail}
+                      onChange={(e) => setAuthEmail(e.target.value)}
+                      placeholder="email@example.com"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Mật khẩu</label>
+                    <input 
+                      type="password"
+                      required
+                      minLength={6}
+                      value={authPassword}
+                      onChange={(e) => setAuthPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
+                    />
+                  </div>
+
+                  {authError && (
+                    <div className="flex items-center gap-2 p-3 bg-rose-50 text-rose-500 rounded-xl text-xs font-bold animate-shake">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{authError}</span>
+                    </div>
+                  )}
+
+                  <button 
+                    type="submit"
+                    disabled={isLoggingIn}
+                    className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-[0.98] disabled:opacity-70 flex items-center justify-center gap-2"
+                  >
+                    {isLoggingIn ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      authMode === 'login' ? 'Đăng nhập' : 'Đăng ký'
+                    )}
+                  </button>
+                </form>
+
+                <div className="relative my-8">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-100"></div>
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-white px-4 text-slate-400 font-bold tracking-widest">Hoặc</span>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={handleLogin}
+                  disabled={isLoggingIn}
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3.5 border-2 border-slate-100 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm text-slate-700 active:scale-[0.98]"
+                >
+                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
+                  Tiếp tục với Google
+                </button>
+
+                <p className="mt-8 text-center text-xs text-slate-500">
+                  {authMode === 'login' ? 'Chưa có tài khoản?' : 'Đã có tài khoản?'}
+                  <button 
+                    onClick={() => {
+                      setAuthMode(authMode === 'login' ? 'register' : 'login');
+                      setAuthError(null);
+                    }}
+                    className="ml-1.5 text-indigo-600 font-bold hover:underline"
+                  >
+                    {authMode === 'login' ? 'Đăng ký ngay' : 'Đăng nhập ngay'}
+                  </button>
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Settings Modal */}
       <AnimatePresence>
         {showSettings && (
@@ -1335,6 +1692,134 @@ export default function App() {
                         <Settings className="w-3.5 h-3.5" />
                         Sử dụng API Key từ AI Studio
                       </button>
+                    )}
+                  </div>
+                  
+                  {/* Key Vault Section */}
+                  <div className="pt-4 border-t border-slate-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <Key className="w-4 h-4 text-indigo-500" />
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-widest">
+                          Kho lưu trữ Key (Vault)
+                        </label>
+                      </div>
+                      {user && (
+                        <button 
+                          onClick={() => setIsAddingKey(!isAddingKey)}
+                          className="text-[10px] font-black text-indigo-600 hover:text-indigo-700 uppercase tracking-tighter flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-md"
+                        >
+                          <Plus className="w-3 h-3" /> Thêm Key mới
+                        </button>
+                      )}
+                    </div>
+
+                    {!user ? (
+                      <div className="bg-slate-50 rounded-2xl p-6 text-center border border-dashed border-slate-200">
+                        <ShieldCheck className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                        <p className="text-xs font-bold text-slate-500 mb-4">Đăng nhập để lưu trữ nhiều API Key và tự động chuyển đổi khi hết hạn mức.</p>
+                        <button 
+                          onClick={handleLogin}
+                          className="bg-indigo-600 text-white px-6 py-2 rounded-full text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                        >
+                          Đăng nhập ngay
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {isAddingKey && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-indigo-50/50 rounded-2xl p-4 border border-indigo-100 mb-4"
+                          >
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                              <input 
+                                type="text"
+                                placeholder="Tên gợi nhớ (VD: Key 1)"
+                                value={newKey.name}
+                                onChange={(e) => setNewKey(prev => ({ ...prev, name: e.target.value }))}
+                                className="px-3 py-2 bg-white border border-indigo-100 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                              />
+                              <select 
+                                value={newKey.engine}
+                                onChange={(e) => setNewKey(prev => ({ ...prev, engine: e.target.value }))}
+                                className="px-3 py-2 bg-white border border-indigo-100 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                              >
+                                <option value="gemini">Gemini</option>
+                                <option value="medical-specialized">Medical API</option>
+                              </select>
+                            </div>
+                            <input 
+                              type="password"
+                              placeholder="Dán API Key vào đây..."
+                              value={newKey.value}
+                              onChange={(e) => setNewKey(prev => ({ ...prev, value: e.target.value }))}
+                              className="w-full px-3 py-2 bg-white border border-indigo-100 rounded-xl text-xs mb-3 focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                            />
+                            <div className="flex justify-end gap-2">
+                              <button 
+                                onClick={() => setIsAddingKey(false)}
+                                className="px-3 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
+                              >
+                                Hủy
+                              </button>
+                              <button 
+                                onClick={handleAddKey}
+                                className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-bold hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100"
+                              >
+                                Lưu vào Vault
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+
+                        <div className="max-h-[200px] overflow-y-auto pr-2 space-y-2 no-scrollbar">
+                          {userKeys.length === 0 ? (
+                            <p className="text-[10px] text-slate-400 text-center py-4 italic">Chưa có Key nào trong kho lưu trữ.</p>
+                          ) : (
+                            userKeys.map((key) => (
+                              <div 
+                                key={key.id}
+                                className={cn(
+                                  "flex items-center justify-between p-3 rounded-xl border transition-all group",
+                                  selectedKeyId === key.id 
+                                    ? "bg-indigo-50 border-indigo-200 ring-1 ring-indigo-200" 
+                                    : "bg-white border-slate-100 hover:border-slate-200"
+                                )}
+                              >
+                                <div 
+                                  className="flex-1 cursor-pointer"
+                                  onClick={() => setSelectedKeyId(key.id)}
+                                >
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="text-xs font-bold text-slate-700">{key.name}</span>
+                                    <span className="text-[8px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded uppercase font-black tracking-tighter">
+                                      {key.engine}
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]">
+                                    {key.value.substring(0, 8)}••••••••{key.value.substring(key.value.length - 4)}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button 
+                                    onClick={() => handleDeleteKey(key.id)}
+                                    className="p-1.5 hover:bg-rose-50 text-rose-400 hover:text-rose-500 rounded-lg transition-colors"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  {selectedKeyId === key.id && (
+                                    <div className="bg-emerald-500 p-1 rounded-full">
+                                      <CheckCircle2 className="w-3 h-3 text-white" />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
                   
