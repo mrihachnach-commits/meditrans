@@ -293,8 +293,8 @@ export class GeminiService implements TranslationService {
             responseSchema: {
               type: Type.OBJECT,
               properties: {
-                term: { type: Type.STRING, description: "Thuật ngữ gốc được tra cứu" },
-                definition: { type: Type.STRING, description: "Định nghĩa chi tiết bằng tiếng Việt" },
+                term: { type: Type.STRING, description: "BẮT BUỘC: Phải giống hệt với từ/cụm từ được tra cứu ở prompt" },
+                definition: { type: Type.STRING, description: "Định nghĩa chi tiết hoặc dịch nghĩa bằng tiếng Việt" },
                 synonyms: { 
                   type: Type.ARRAY, 
                   items: { type: Type.STRING },

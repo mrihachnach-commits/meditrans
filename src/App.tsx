@@ -539,18 +539,14 @@ export default function App() {
         
         if (!isInsidePDF && !isInsideTranslation) return;
 
-        // Clean the selected text: collapse whitespace and remove surrounding punctuation
-        // We also remove soft hyphens and other invisible characters common in PDFs
+        // Clean the selected text: remove invisible characters and trim
+        // We keep punctuation and internal spacing as the user wants the "exact" selection
         const text = selectedText
           .replace(/[\u00AD\u200B\u200C\u200D]/g, '') // Remove soft hyphens and zero-width spaces
-          .replace(/\s+/g, ' ')
-          .trim()
-          .replace(/[.,;:!?()\[\]{}'"]+$/, '')
-          .replace(/^[.,;:!?()\[\]{}'"]+/, '');
+          .trim();
         
-        // Only trigger if it looks like a medical term (not too long, not just numbers)
+        // Only trigger if it's not just whitespace
         const isNumeric = /^\d+$/.test(text);
-        const wordCount = text.split(/\s+/).length;
         
         // Check if selection spans multiple lines by comparing rects
         let isSingleLine = true;
@@ -562,7 +558,7 @@ export default function App() {
               // If multiple rects, check if they are on different vertical levels
               const firstRect = rects[0];
               for (let i = 1; i < rects.length; i++) {
-                if (Math.abs(rects[i].top - firstRect.top) > 10) {
+                if (Math.abs(rects[i].top - firstRect.top) > 15) { // Slightly more tolerant
                   isSingleLine = false;
                   break;
                 }
@@ -571,7 +567,9 @@ export default function App() {
           }
         } catch (e) {}
 
-        if (text.length > 1 && text.length < 50 && !isNumeric && wordCount <= 4 && isSingleLine) {
+        // Increase limits to allow longer phrases or short sentences (up to 150 chars, 15 words)
+        const wordCount = text.split(/\s+/).length;
+        if (text.length > 1 && text.length < 150 && !isNumeric && wordCount <= 15 && isSingleLine) {
           try {
             const range = selection?.getRangeAt(0);
             if (range) {

@@ -122,30 +122,30 @@ export const MedicalDictionary: React.FC<MedicalDictionaryProps> = ({
             </div>
           ) : info ? (
             <div className="space-y-4">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-100">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Từ gốc (Original)</span>
+                  <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Văn bản đã chọn</span>
                   <button 
                     onClick={() => {
                       navigator.clipboard.writeText(selectedTerm);
                       setCopied(true);
                       setTimeout(() => setCopied(false), 2000);
                     }}
-                    className="flex items-center gap-1 px-2 py-1 bg-white border border-slate-200 rounded-md text-[10px] font-bold text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-all"
+                    className="flex items-center gap-1 px-2 py-1 bg-white border border-indigo-200 rounded-md text-[10px] font-bold text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all"
                   >
                     {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
                     Sao chép
                   </button>
                 </div>
-                <p className="text-base font-bold text-slate-800 break-words">
+                <p className="text-base font-bold text-slate-800 break-words leading-tight">
                   {selectedTerm}
                 </p>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <h3 className="text-lg font-display font-bold text-indigo-600 leading-tight">
-                    {info.term}
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+                    Dịch nghĩa & Giải thích
                   </h3>
                   <button 
                     onClick={handleCopy}
@@ -156,6 +156,14 @@ export const MedicalDictionary: React.FC<MedicalDictionaryProps> = ({
                   </button>
                 </div>
                 <div className="h-1 w-12 bg-indigo-500 rounded-full mb-3" />
+                
+                {/* Use info.term if it's different (e.g. AI corrected a typo) but keep it secondary */}
+                {info.term.toLowerCase() !== selectedTerm.toLowerCase() && (
+                  <p className="text-sm font-bold text-indigo-600 mb-2">
+                    {info.term}
+                  </p>
+                )}
+                
                 <p className="text-sm text-slate-600 leading-relaxed">
                   {info.definition}
                 </p>
