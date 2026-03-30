@@ -5,7 +5,7 @@ export class GeminiService implements TranslationService {
   private ai: any;
   private modelName: string;
 
-  constructor(apiKey?: string, modelName: string = "gemini-3-flash-preview") {
+  constructor(apiKey?: string, modelName: string = "gemini-2.0-flash") {
     this.modelName = modelName;
     // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
@@ -167,10 +167,10 @@ export class GeminiService implements TranslationService {
           throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
         }
         if (isQuotaError) {
-          throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc chuyển sang model 'Gemini 2.0 Flash' trong phần Cài đặt để tiếp tục.");
+          throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc kiểm tra lại API Key trong phần Cài đặt.");
         }
         if (isUnavailableError) {
-          throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát hoặc chuyển sang model 'Gemini 2.0 Flash'.");
+          throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát.");
         }
         throw new Error(`Lỗi dịch thuật: ${error.message || "Không rõ nguyên nhân"}`);
       }
@@ -273,10 +273,10 @@ export class GeminiService implements TranslationService {
           throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
         }
         if (isQuotaError) {
-          throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc chuyển sang model 'Gemini 2.0 Flash' trong phần Cài đặt để tiếp tục.");
+          throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc kiểm tra lại API Key trong phần Cài đặt.");
         }
         if (isUnavailableError) {
-          throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát hoặc chuyển sang model 'Gemini 2.0 Flash'.");
+          throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát.");
         }
         throw new Error(`Lỗi dịch thuật: ${error.message || "Không rõ nguyên nhân"}`);
       }
@@ -369,10 +369,10 @@ export class GeminiService implements TranslationService {
         }
 
         if (isQuotaError) {
-          throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc chuyển sang model 'Gemini 2.0 Flash' trong phần Cài đặt để tiếp tục.");
+          throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc kiểm tra lại API Key trong phần Cài đặt.");
         }
         if (isUnavailableError) {
-          throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát hoặc chuyển sang model 'Gemini 2.0 Flash'.");
+          throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát.");
         }
         throw new Error(`Lỗi tra cứu: ${error.message || "Không rõ nguyên nhân"}`);
       }

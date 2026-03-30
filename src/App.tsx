@@ -123,10 +123,8 @@ export default function App() {
   }, [currentPage, numPages, currentJob]);
 
   const [isTranslating, setIsTranslating] = useState(false);
-  const [selectedEngine, setSelectedEngine] = useState<TranslationEngine>(() => {
-    const saved = localStorage.getItem('selected_engine');
-    return (saved as TranslationEngine) || 'gemini-flash';
-  });
+  const selectedEngine: TranslationEngine = 'gemini-flash';
+  
   const [engineKeys, setEngineKeys] = useState<Record<TranslationEngine, string>>(() => {
     const saved = localStorage.getItem('engine_keys');
     if (saved) {
@@ -739,7 +737,7 @@ export default function App() {
     }
 
     if (selectedEngine === 'gemini-flash') {
-      translationService.current = new GeminiService(key, "gemini-3-flash-preview");
+      translationService.current = new GeminiService(key, "gemini-2.0-flash");
     } else if (selectedEngine === 'gemini-pro') {
       translationService.current = new GeminiService(key, "gemini-3.1-pro-preview");
     } else if (selectedEngine === 'medical-specialized') {
@@ -968,23 +966,19 @@ export default function App() {
     }, 50);
   };
 
-  const saveSettings = (engine: TranslationEngine, keys: Record<TranslationEngine, string>) => {
-    setSelectedEngine(engine);
+  const saveSettings = (keys: Record<TranslationEngine, string>) => {
     setEngineKeys(keys);
-    localStorage.setItem('selected_engine', engine);
     localStorage.setItem('engine_keys', JSON.stringify(keys));
     setShowSettings(false);
   };
 
-  const [tempEngine, setTempEngine] = useState<TranslationEngine>(selectedEngine);
   const [tempKeys, setTempKeys] = useState<Record<TranslationEngine, string>>(engineKeys);
 
   useEffect(() => {
     if (showSettings) {
-      setTempEngine(selectedEngine);
       setTempKeys(engineKeys);
     }
-  }, [showSettings, selectedEngine, engineKeys]);
+  }, [showSettings, engineKeys]);
 
   return (
     <div className={cn("h-screen flex flex-col bg-slate-50 overflow-hidden", isFullScreen && "fixed inset-0 z-50")}>
@@ -1711,65 +1705,24 @@ export default function App() {
                 
                 <div className="space-y-6">
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
-                      Chọn Engine Dịch thuật
-                    </label>
-                    <div className="grid grid-cols-1 gap-3">
-                      {[
-                        { id: 'gemini-flash', name: 'Gemini 2.0 Flash', desc: 'Nhanh nhất, hạn mức sử dụng cao (Khuyên dùng).', tag: 'Nhanh nhất', tagColor: 'bg-green-100 text-green-700' },
-                        { id: 'gemini-pro', name: 'Gemini 1.5 Pro', desc: 'Chính xác cao, nhưng hạn mức sử dụng thấp hơn.', tag: 'Chính xác cao', tagColor: 'bg-amber-100 text-amber-700' },
-                        { id: 'medical-specialized', name: 'Medical Specialized API', desc: 'API chuyên dụng cho thuật ngữ y khoa (Mô phỏng).' }
-                      ].map((engine) => (
-                        <button
-                          key={engine.id}
-                          onClick={() => setTempEngine(engine.id as TranslationEngine)}
-                          className={cn(
-                            "flex flex-col items-start p-4 rounded-2xl border-2 transition-all text-left",
-                            tempEngine === engine.id 
-                              ? "border-indigo-600 bg-indigo-50/50" 
-                              : "border-slate-100 hover:border-slate-200 bg-white"
-                          )}
-                        >
-                          <div className="flex items-center justify-between w-full mb-1">
-                            <div className="flex items-center gap-2">
-                              <span className={cn("font-bold text-sm", tempEngine === engine.id ? "text-indigo-700" : "text-slate-700")}>
-                                {engine.name}
-                              </span>
-                              {(engine as any).tag && (
-                                <span className={cn("px-1.5 py-0.5 text-[8px] font-bold rounded-full uppercase tracking-wider", (engine as any).tagColor)}>
-                                  {(engine as any).tag}
-                                </span>
-                              )}
-                            </div>
-                            {tempEngine === engine.id && <CheckCircle2 className="w-4 h-4 text-indigo-600" />}
-                          </div>
-                          <span className="text-[10px] text-slate-500 leading-tight">{engine.desc}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
-                      API Key cho {tempEngine === 'medical-specialized' ? 'Medical API' : 'Gemini'}
+                      API Key cho Gemini 2.0 Flash
                     </label>
                     <input 
                       type="password"
-                      value={tempKeys[tempEngine]}
-                      onChange={(e) => setTempKeys(prev => ({ ...prev, [tempEngine]: e.target.value }))}
-                      placeholder={`Nhập API Key cho ${tempEngine}...`}
+                      value={tempKeys['gemini-flash']}
+                      onChange={(e) => setTempKeys(prev => ({ ...prev, ['gemini-flash']: e.target.value }))}
+                      placeholder="Nhập API Key cho Gemini..."
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm"
                     />
                     
-                    {tempEngine.startsWith('gemini') && (
-                      <div className="mt-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-                        <p className="text-[10px] text-indigo-700 leading-relaxed">
-                          <span className="font-bold">Ghi chú:</span> Nếu để trống, ứng dụng sẽ sử dụng API Key mặc định từ hệ thống (nếu có).
-                        </p>
-                      </div>
-                    )}
+                    <div className="mt-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                      <p className="text-[10px] text-indigo-700 leading-relaxed">
+                        <span className="font-bold">Ghi chú:</span> Nếu để trống, ứng dụng sẽ sử dụng API Key mặc định từ hệ thống (nếu có).
+                      </p>
+                    </div>
 
-                    {tempEngine.startsWith('gemini') && (window as any).aistudio?.openSelectKey && (
+                    {(window as any).aistudio?.openSelectKey && (
                       <button 
                         onClick={async () => {
                           if (translationService.current instanceof GeminiService) {
@@ -1823,7 +1776,7 @@ export default function App() {
                             animate={{ opacity: 1, y: 0 }}
                             className="bg-indigo-50/50 rounded-2xl p-4 border border-indigo-100 mb-4"
                           >
-                            <div className="grid grid-cols-2 gap-3 mb-3">
+                            <div className="grid grid-cols-1 gap-3 mb-3">
                               <input 
                                 type="text"
                                 placeholder="Tên gợi nhớ (VD: Key 1)"
@@ -1831,14 +1784,6 @@ export default function App() {
                                 onChange={(e) => setNewKey(prev => ({ ...prev, name: e.target.value }))}
                                 className="px-3 py-2 bg-white border border-indigo-100 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
                               />
-                              <select 
-                                value={newKey.engine}
-                                onChange={(e) => setNewKey(prev => ({ ...prev, engine: e.target.value }))}
-                                className="px-3 py-2 bg-white border border-indigo-100 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
-                              >
-                                <option value="gemini">Gemini</option>
-                                <option value="medical-specialized">Medical API</option>
-                              </select>
                             </div>
                             <input 
                               type="password"
@@ -1884,9 +1829,6 @@ export default function App() {
                                 >
                                   <div className="flex items-center gap-2 mb-0.5">
                                     <span className="text-xs font-bold text-slate-700">{key.name}</span>
-                                    <span className="text-[8px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded uppercase font-black tracking-tighter">
-                                      {key.engine}
-                                    </span>
                                   </div>
                                   <p className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]">
                                     {key.value.substring(0, 8)}••••••••{key.value.substring(key.value.length - 4)}
@@ -1921,7 +1863,7 @@ export default function App() {
                       Hủy
                     </button>
                     <button 
-                      onClick={() => saveSettings(tempEngine, tempKeys)}
+                      onClick={() => saveSettings(tempKeys)}
                       className="flex-1 px-6 py-3 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
                     >
                       Lưu cấu hình
@@ -1938,7 +1880,7 @@ export default function App() {
       {!file && (
         <footer className="h-12 border-t border-slate-200 bg-white flex items-center justify-center px-6 shrink-0">
           <p className="text-[10px] text-slate-400 font-medium uppercase tracking-[0.2em]">
-            Powered by Google Gemini 2.0 & PDF.js • Medical Grade Translation
+            Copyright © Dr. Hoang Hiep • Medical Grade Translation
           </p>
         </footer>
       )}
