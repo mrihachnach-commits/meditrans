@@ -1574,21 +1574,34 @@ export default function App() {
                           : translations[currentPage]?.content || ''}
                       </ReactMarkdown>
 
-                      {/* Mobile Next Page Button */}
-                      {currentPage < numPages && translations[currentPage]?.status === 'success' && (
-                        <div className="mt-12 pt-8 border-t border-slate-100 md:hidden">
+                      {/* Mobile Navigation Buttons at bottom of translation */}
+                      <div className="mt-12 pt-8 border-t border-slate-100 md:hidden flex flex-col gap-4">
+                        {currentPage < numPages && (
                           <button 
                             onClick={() => {
                               setCurrentPage(p => p + 1);
                               window.scrollTo({ top: 0, behavior: 'smooth' });
                             }}
-                            className="w-full py-4 bg-indigo-50 text-indigo-600 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-100 transition-all active:scale-95"
+                            className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all active:scale-95 shadow-lg shadow-indigo-100"
                           >
                             <span>Trang tiếp theo ({currentPage + 1}/{numPages})</span>
                             <ChevronRight className="w-4 h-4" />
                           </button>
-                        </div>
-                      )}
+                        )}
+                        
+                        {currentPage > 1 && (
+                          <button 
+                            onClick={() => {
+                              setCurrentPage(p => p - 1);
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 transition-all active:scale-95"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                            <span>Trang trước ({currentPage - 1}/{numPages})</span>
+                          </button>
+                        )}
+                      </div>
 
                       {activeTranslation && activeTranslation.page === currentPage && (
                         <div className="mt-4 flex flex-col gap-3">
@@ -1748,33 +1761,86 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Mobile View Toggle Floating Button */}
+      {/* Mobile View Toggle & Navigation Floating Bar */}
       {file && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] md:hidden flex items-center bg-white/95 backdrop-blur-xl rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-200 p-1.5 gap-1 ring-1 ring-slate-900/5">
-          <button 
-            onClick={() => setMobileViewMode('pdf')}
-            className={cn(
-              "flex items-center gap-2 px-6 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all duration-300",
-              mobileViewMode === 'pdf' 
-                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200 scale-105" 
-                : "text-slate-500 hover:bg-slate-100"
-            )}
-          >
-            <FileText className="w-4 h-4" />
-            PDF
-          </button>
-          <button 
-            onClick={() => setMobileViewMode('translation')}
-            className={cn(
-              "flex items-center gap-2 px-6 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all duration-300",
-              mobileViewMode === 'translation' 
-                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200 scale-105" 
-                : "text-slate-500 hover:bg-slate-100"
-            )}
-          >
-            <Languages className="w-4 h-4" />
-            Dịch
-          </button>
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] md:hidden flex flex-col items-center gap-3 w-[90%] max-w-[360px]">
+          {/* Main Action Bar */}
+          <div className="w-full flex items-center bg-white/95 backdrop-blur-xl rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-slate-200 p-1.5 gap-1 ring-1 ring-slate-900/5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* View Toggle */}
+            <div className="flex bg-slate-100/80 rounded-full p-1 gap-1 shrink-0">
+              <button 
+                onClick={() => setMobileViewMode('pdf')}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-all duration-300",
+                  mobileViewMode === 'pdf' 
+                    ? "bg-white text-indigo-600 shadow-sm scale-105" 
+                    : "text-slate-500"
+                )}
+              >
+                <FileText className="w-3 h-3" />
+                PDF
+              </button>
+              <button 
+                onClick={() => setMobileViewMode('translation')}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-all duration-300",
+                  mobileViewMode === 'translation' 
+                    ? "bg-white text-indigo-600 shadow-sm scale-105" 
+                    : "text-slate-500"
+                )}
+              >
+                <Languages className="w-3 h-3" />
+                Dịch
+              </button>
+            </div>
+            
+            <div className="w-px h-6 bg-slate-200 mx-0.5 shrink-0" />
+            
+            {/* Navigation */}
+            <div className="flex-1 flex items-center justify-center gap-1">
+              <button 
+                onClick={() => {
+                  setCurrentPage(p => Math.max(1, p - 1));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                disabled={currentPage === 1}
+                className="p-2 text-slate-600 disabled:opacity-20 active:scale-75 transition-all"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              
+              <div className="flex flex-col items-center min-w-[40px]">
+                <span className="text-[11px] font-black text-slate-800 leading-none">{currentPage}/{numPages}</span>
+              </div>
+              
+              <button 
+                onClick={() => {
+                  setCurrentPage(p => Math.min(numPages, p + 1));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                disabled={currentPage === numPages}
+                className="p-2 text-slate-600 disabled:opacity-20 active:scale-75 transition-all"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="w-px h-6 bg-slate-200 mx-0.5 shrink-0" />
+
+            {/* Auto Toggle */}
+            <button 
+              onClick={() => setAutoTranslate(!autoTranslate)}
+              className={cn(
+                "p-2.5 rounded-full transition-all shrink-0",
+                autoTranslate 
+                  ? "bg-emerald-100 text-emerald-600 shadow-inner" 
+                  : "bg-slate-100 text-slate-400"
+              )}
+              title="Tự động dịch"
+            >
+              <RefreshCcw className={cn("w-4 h-4", autoTranslate && "animate-spin-slow")} />
+            </button>
+          </div>
         </div>
       )}
 
