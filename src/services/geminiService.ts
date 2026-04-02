@@ -11,8 +11,8 @@ export class GeminiService implements TranslationService {
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
     const key = (apiKey && apiKey.trim() !== "") ? apiKey : envKey;
     
-    // Check if it's a valid key and not a placeholder
-    if (key && key !== "MY_GEMINI_API_KEY" && key.trim() !== "") {
+    // Check if it's a valid key
+    if (key && key.trim() !== "") {
       try {
         this.ai = new GoogleGenAI({ apiKey: key });
         console.log(`GeminiService initialized with model ${modelName} and API Key.`);
@@ -27,18 +27,23 @@ export class GeminiService implements TranslationService {
   async hasApiKey(): Promise<boolean> {
     if (this.ai) return true;
     
+    // Check environment key again (might have been updated)
+    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (envKey && envKey.trim() !== "") {
+      try {
+        this.ai = new GoogleGenAI({ apiKey: envKey });
+        return true;
+      } catch (e) {
+        console.error("Failed to re-initialize GoogleGenAI with envKey:", e);
+      }
+    }
+    
     // Check if platform has a selected key
     if (typeof window !== 'undefined' && (window as any).aistudio?.hasSelectedApiKey) {
       const hasSelected = await (window as any).aistudio.hasSelectedApiKey();
       if (hasSelected) return true;
     }
 
-    // Check environment key again (might have been updated)
-    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
-      return true;
-    }
-    
     return false;
   }
 
@@ -63,7 +68,7 @@ export class GeminiService implements TranslationService {
     // Re-check for key if not initialized (might have been selected via platform)
     if (!this.ai) {
       const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-      if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
+      if (envKey && envKey.trim() !== "") {
         this.ai = new GoogleGenAI({ apiKey: envKey });
       }
     }
@@ -115,7 +120,6 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0.1,
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             safetySettings: [
               { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
               { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -167,7 +171,7 @@ export class GeminiService implements TranslationService {
           throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
         }
         if (isQuotaError) {
-          throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc kiểm tra lại API Key trong phần Cài đặt.");
+          throw new Error("Bạn đã hết hạn mức sử dụng API (Quota exceeded). Nếu bạn dùng gói miễn phí, giới hạn là 15 yêu cầu/phút. Vui lòng đợi 1 phút hoặc kiểm tra lại API Key.");
         }
         if (isUnavailableError) {
           throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát.");
@@ -187,7 +191,7 @@ export class GeminiService implements TranslationService {
     // Re-check for key if not initialized (might have been selected via platform)
     if (!this.ai) {
       const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-      if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
+      if (envKey && envKey.trim() !== "") {
         this.ai = new GoogleGenAI({ apiKey: envKey });
       }
     }
@@ -239,7 +243,6 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0.1,
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             safetySettings: [
               { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
               { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -273,7 +276,7 @@ export class GeminiService implements TranslationService {
           throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
         }
         if (isQuotaError) {
-          throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc kiểm tra lại API Key trong phần Cài đặt.");
+          throw new Error("Bạn đã hết hạn mức sử dụng API (Quota exceeded). Nếu bạn dùng gói miễn phí, giới hạn là 15 yêu cầu/phút. Vui lòng đợi 1 phút hoặc kiểm tra lại API Key.");
         }
         if (isUnavailableError) {
           throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát.");
@@ -369,7 +372,7 @@ export class GeminiService implements TranslationService {
         }
 
         if (isQuotaError) {
-          throw new Error("Bạn đã hết hạn mức sử dụng API miễn phí trong lúc này. Vui lòng đợi khoảng 1 phút hoặc kiểm tra lại API Key trong phần Cài đặt.");
+          throw new Error("Bạn đã hết hạn mức sử dụng API (Quota exceeded). Nếu bạn dùng gói miễn phí, giới hạn là 15 yêu cầu/phút. Vui lòng đợi 1 phút hoặc kiểm tra lại API Key.");
         }
         if (isUnavailableError) {
           throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát.");

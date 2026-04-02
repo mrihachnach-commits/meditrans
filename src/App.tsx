@@ -137,7 +137,7 @@ export default function App() {
     
     // Initial defaults
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    const defaultKey = (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") ? envKey : '';
+    const defaultKey = (envKey && envKey.trim() !== "") ? envKey : '';
     
     return {
       'gemini-flash': defaultKey,
@@ -159,6 +159,7 @@ export default function App() {
   }, [selectedEngine, engineKeys]);
 
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [mobileViewMode, setMobileViewMode] = useState<'pdf' | 'translation'>('pdf');
   const [autoTranslate, setAutoTranslate] = useState(false);
   const [zoom, setZoom] = useState(0.82); // Default to 82% as requested
   const [isAutoFit, setIsAutoFit] = useState(true);
@@ -744,6 +745,14 @@ export default function App() {
     } else if (selectedEngine === 'medical-specialized') {
       translationService.current = new MedicalApiService(key);
     }
+
+    // Log key initialization for debugging (obfuscated)
+    if (key) {
+      const obfuscated = key.length > 8 ? `${key.substring(0, 4)}...${key.substring(key.length - 4)}` : '****';
+      console.log(`[MediTrans AI] Initialized ${selectedEngine} with key: ${obfuscated}`);
+    } else {
+      console.log(`[MediTrans AI] Initialized ${selectedEngine} with system default key`);
+    }
   }, [selectedEngine, engineKeys, user, selectedKeyId, userKeys]);
 
   useEffect(() => {
@@ -1130,11 +1139,12 @@ export default function App() {
             </motion.div>
           </div>
         ) : (
-          <div className="flex-1 flex divide-x divide-slate-200 min-h-0 w-full overflow-hidden relative">
+          <div className="flex-1 flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-slate-200 min-h-0 w-full overflow-hidden relative">
             {/* Left Side: Original PDF */}
             <div className={cn(
               "flex flex-col bg-slate-100 overflow-hidden border-r border-slate-200 transition-all duration-300 ease-in-out relative",
-              isFullScreen ? "w-full" : "w-1/2"
+              isFullScreen ? "w-full" : "w-full md:w-1/2",
+              mobileViewMode === 'pdf' ? "flex h-full" : "hidden md:flex"
             )}>
               <div className="h-11 bg-white border-b border-slate-200 flex items-center justify-between px-3 shrink-0 z-20 shadow-sm overflow-x-auto no-scrollbar">
                 <div className="flex items-center gap-3 min-w-max">
@@ -1143,6 +1153,25 @@ export default function App() {
                     {isFullScreen && (
                       <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-500 text-[8px] font-black rounded uppercase tracking-tighter border border-indigo-100">Focus</span>
                     )}
+
+                    {/* Mobile Navigation */}
+                    <div className="flex items-center gap-0.5 md:hidden bg-slate-50 rounded-lg px-1.5 py-0.5 border border-slate-100">
+                      <button 
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="p-1 hover:bg-slate-200 rounded-md disabled:opacity-20 transition-colors"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5 text-slate-600" />
+                      </button>
+                      <span className="text-[10px] font-black text-slate-500 min-w-[30px] text-center">{currentPage}/{numPages}</span>
+                      <button 
+                        onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))}
+                        disabled={currentPage === numPages}
+                        className="p-1 hover:bg-slate-200 rounded-md disabled:opacity-20 transition-colors"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="h-4 w-px bg-slate-200" />
@@ -1302,16 +1331,40 @@ export default function App() {
             </div>
 
             {/* Right Side: Translation */}
-            {!isFullScreen && (
-              <motion.div 
-                initial={{ x: 300, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: 300, opacity: 0 }}
-                className="w-1/2 flex flex-col bg-white overflow-hidden"
-              >
-                <div className="h-11 border-b border-slate-200 flex items-center justify-between px-3 shrink-0 z-20 shadow-sm overflow-x-auto no-scrollbar">
+            <motion.div 
+              initial={{ x: 300, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 300, opacity: 0 }}
+              className={cn(
+                "flex flex-col bg-white overflow-hidden transition-all duration-300",
+                isFullScreen ? "hidden" : "w-full md:w-1/2",
+                mobileViewMode === 'translation' ? "flex h-full" : "hidden md:flex"
+              )}
+            >
+              <div className="h-11 border-b border-slate-200 flex items-center justify-between px-3 shrink-0 z-20 shadow-sm overflow-x-auto no-scrollbar">
                 <div className="flex items-center gap-3 min-w-max">
-                  <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em]">Translation</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em]">Translation</span>
+                    
+                    {/* Mobile Navigation */}
+                    <div className="flex items-center gap-0.5 md:hidden bg-slate-50 rounded-lg px-1.5 py-0.5 border border-slate-100">
+                      <button 
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="p-1 hover:bg-slate-200 rounded-md disabled:opacity-20 transition-colors"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5 text-slate-600" />
+                      </button>
+                      <span className="text-[10px] font-black text-slate-500 min-w-[30px] text-center">{currentPage}/{numPages}</span>
+                      <button 
+                        onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))}
+                        disabled={currentPage === numPages}
+                        className="p-1 hover:bg-slate-200 rounded-md disabled:opacity-20 transition-colors"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+                      </button>
+                    </div>
+                  </div>
                   
                   <div className="h-4 w-px bg-slate-200" />
                   
@@ -1410,7 +1463,7 @@ export default function App() {
                 </div>
               </div>
               
-              <div className="flex-1 overflow-auto p-12 bg-white">
+              <div className="flex-1 overflow-auto p-6 md:p-12 bg-white">
                 <AnimatePresence mode="wait">
                   {(!translations[currentPage] && (!activeTranslation || activeTranslation.page !== currentPage)) ? (
                     (isRendering || isPdfLoading) ? (
@@ -1520,6 +1573,23 @@ export default function App() {
                           ? activeTranslation.content 
                           : translations[currentPage]?.content || ''}
                       </ReactMarkdown>
+
+                      {/* Mobile Next Page Button */}
+                      {currentPage < numPages && translations[currentPage]?.status === 'success' && (
+                        <div className="mt-12 pt-8 border-t border-slate-100 md:hidden">
+                          <button 
+                            onClick={() => {
+                              setCurrentPage(p => p + 1);
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="w-full py-4 bg-indigo-50 text-indigo-600 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-100 transition-all active:scale-95"
+                          >
+                            <span>Trang tiếp theo ({currentPage + 1}/{numPages})</span>
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+
                       {activeTranslation && activeTranslation.page === currentPage && (
                         <div className="mt-4 flex flex-col gap-3">
                           <div className="flex items-center gap-2 text-indigo-400 italic text-xs animate-pulse">
@@ -1540,10 +1610,9 @@ export default function App() {
                 </AnimatePresence>
               </div>
             </motion.div>
-          )}
-        </div>
-      )}
-    </main>
+          </div>
+        )}
+      </main>
 
       {/* Dictionary Pop-up */}
       {selectedTerm && (
@@ -1679,6 +1748,36 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Mobile View Toggle Floating Button */}
+      {file && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] md:hidden flex items-center bg-white/95 backdrop-blur-xl rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-200 p-1.5 gap-1 ring-1 ring-slate-900/5">
+          <button 
+            onClick={() => setMobileViewMode('pdf')}
+            className={cn(
+              "flex items-center gap-2 px-6 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all duration-300",
+              mobileViewMode === 'pdf' 
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200 scale-105" 
+                : "text-slate-500 hover:bg-slate-100"
+            )}
+          >
+            <FileText className="w-4 h-4" />
+            PDF
+          </button>
+          <button 
+            onClick={() => setMobileViewMode('translation')}
+            className={cn(
+              "flex items-center gap-2 px-6 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all duration-300",
+              mobileViewMode === 'translation' 
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200 scale-105" 
+                : "text-slate-500 hover:bg-slate-100"
+            )}
+          >
+            <Languages className="w-4 h-4" />
+            Dịch
+          </button>
+        </div>
+      )}
+
       {/* Settings Modal */}
       <AnimatePresence>
         {showSettings && (
@@ -1709,13 +1808,45 @@ export default function App() {
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
                       API Key cho Gemini 2.0 Flash
                     </label>
-                    <input 
-                      type="password"
-                      value={tempKeys['gemini-flash']}
-                      onChange={(e) => setTempKeys(prev => ({ ...prev, ['gemini-flash']: e.target.value }))}
-                      placeholder="Nhập API Key cho Gemini..."
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm"
-                    />
+                    <div className="flex gap-2 mt-3">
+                      <input 
+                        type="password"
+                        value={tempKeys['gemini-flash']}
+                        onChange={(e) => setTempKeys(prev => ({ ...prev, ['gemini-flash']: e.target.value }))}
+                        placeholder="Nhập API Key cho Gemini..."
+                        className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm"
+                      />
+                      <button 
+                        onClick={async () => {
+                          if (!tempKeys['gemini-flash']) {
+                            alert("Vui lòng nhập API Key để kiểm tra.");
+                            return;
+                          }
+                          const testService = new GeminiService(tempKeys['gemini-flash'], "gemini-2.0-flash");
+                          try {
+                            const btn = document.activeElement as HTMLButtonElement;
+                            if (btn) {
+                              btn.disabled = true;
+                              btn.innerHTML = '<svg class="animate-spin h-4 w-4 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+                            }
+                            await testService.lookupMedicalTerm("test");
+                            alert("Kết nối thành công! API Key hoạt động tốt.");
+                          } catch (err: any) {
+                            alert("Lỗi kết nối: " + err.message);
+                          } finally {
+                            const btn = document.activeElement as HTMLButtonElement;
+                            if (btn) {
+                              btn.disabled = false;
+                              btn.innerHTML = '<svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
+                            }
+                          }
+                        }}
+                        className="px-4 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-all flex items-center justify-center"
+                        title="Kiểm tra kết nối"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                      </button>
+                    </div>
                     
                     <div className="mt-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
                       <p className="text-[10px] text-indigo-700 leading-relaxed">
