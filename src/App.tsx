@@ -190,6 +190,7 @@ export default function App() {
   const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
   const [isAddingKey, setIsAddingKey] = useState(false);
   const [newKey, setNewKey] = useState({ name: '', value: '', engine: 'gemini' });
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -350,12 +351,22 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const renderTaskRef = useRef<any>(null);
   const translationService = useRef<TranslationService | null>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
-    if (selectedFile && selectedFile.type === 'application/pdf') {
+    // Reset input value so the same file can be selected again
+    e.target.value = '';
+    
+    if (!selectedFile) return;
+
+    const isPdf = selectedFile.type === 'application/pdf' || 
+                  selectedFile.type === 'application/x-pdf' ||
+                  selectedFile.name.toLowerCase().endsWith('.pdf');
+    
+    if (isPdf) {
       // Clear previous
       if (fileUrl) URL.revokeObjectURL(fileUrl);
       if (pdfDoc) await pdfDoc.destroy();
@@ -389,6 +400,9 @@ export default function App() {
       } finally {
         setIsPdfLoading(false);
       }
+    } else {
+      setUploadError("Vui lòng chọn file định dạng PDF.");
+      setTimeout(() => setUploadError(null), 5000);
     }
   };
 
@@ -1099,26 +1113,37 @@ export default function App() {
             >
               <div className="mb-8 relative inline-block">
                 <div className="absolute -inset-4 bg-indigo-100 rounded-full blur-2xl opacity-50 animate-pulse" />
-                <div className="relative bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
+                <div className="relative bg-white p-8 rounded-3xl shadow-xl border border-slate-100 z-10">
                   <Upload className="w-16 h-16 text-indigo-600 mx-auto mb-6" />
                   <h2 className="text-2xl font-display font-bold text-slate-800 mb-2">Tải lên tài liệu y khoa</h2>
                   <p className="text-slate-500 mb-8">Hỗ trợ file PDF lên tới 200MB. Dịch thuật chuyên sâu giữ nguyên định dạng.</p>
                   
-                  <label className="block">
-                    <span className="sr-only">Chọn file PDF</span>
-                    <input 
-                      type="file" 
-                      accept=".pdf" 
-                      onChange={handleFileChange}
-                      className="block w-full text-sm text-slate-500
-                        file:mr-4 file:py-3 file:px-8
-                        file:rounded-full file:border-0
-                        file:text-sm file:font-semibold
-                        file:bg-indigo-600 file:text-white
-                        hover:file:bg-indigo-700
-                        cursor-pointer transition-all"
-                    />
-                  </label>
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full py-4 bg-indigo-600 text-white rounded-full font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2 mb-2"
+                  >
+                    <Upload className="w-5 h-5" />
+                    <span>Chọn file PDF</span>
+                  </button>
+                  
+                  <input 
+                    ref={fileInputRef}
+                    type="file" 
+                    accept="application/pdf,.pdf" 
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+
+                  {uploadError && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-4 p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-xs font-bold flex items-center justify-center gap-2"
+                    >
+                      <AlertCircle className="w-4 h-4" />
+                      {uploadError}
+                    </motion.div>
+                  )}
                 </div>
               </div>
               
@@ -1280,11 +1305,13 @@ export default function App() {
 
                   <div className="h-4 w-px bg-slate-200" />
 
-                  <label className="flex items-center gap-1.5 px-2 py-1 hover:bg-slate-50 rounded-md cursor-pointer transition-all text-slate-500 group">
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 px-2 py-1 hover:bg-slate-50 rounded-md cursor-pointer transition-all text-slate-500 group relative"
+                  >
                     <RefreshCcw className="w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-500" />
                     <span className="text-[10px] font-black uppercase tracking-tighter">Tải file khác</span>
-                    <input type="file" accept=".pdf" onChange={handleFileChange} className="hidden" />
-                  </label>
+                  </button>
                 </div>
               </div>
               <div 
