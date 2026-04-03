@@ -753,7 +753,7 @@ export default function App() {
     }
 
     if (selectedEngine === 'gemini-flash') {
-      translationService.current = new GeminiService(key, "gemini-2.0-flash");
+      translationService.current = new GeminiService(key, "gemini-3-flash-preview");
     } else if (selectedEngine === 'gemini-pro') {
       translationService.current = new GeminiService(key, "gemini-3.1-pro-preview");
     } else if (selectedEngine === 'medical-specialized') {
@@ -1899,7 +1899,7 @@ export default function App() {
                 <div className="space-y-6">
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
-                      API Key cho Gemini 2.0 Flash
+                      API Key cho Gemini 3 Flash
                     </label>
                     <div className="flex gap-2 mt-3">
                       <input 
@@ -1915,7 +1915,7 @@ export default function App() {
                             alert("Vui lòng nhập API Key để kiểm tra.");
                             return;
                           }
-                          const testService = new GeminiService(tempKeys['gemini-flash'], "gemini-2.0-flash");
+                          const testService = new GeminiService(tempKeys['gemini-flash'], "gemini-3-flash-preview");
                           try {
                             const btn = document.activeElement as HTMLButtonElement;
                             if (btn) {

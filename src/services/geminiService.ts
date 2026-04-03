@@ -2,46 +2,38 @@ import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { TranslationService, TranslationOptions } from "./translationService";
 
 export class GeminiService implements TranslationService {
-  private ai: any;
+  private apiKey?: string;
   private modelName: string;
 
-  constructor(apiKey?: string, modelName: string = "gemini-2.0-flash") {
+  constructor(apiKey?: string, modelName: string = "gemini-3-flash-preview") {
     this.modelName = modelName;
+    this.apiKey = apiKey;
+    console.log(`GeminiService initialized with model ${modelName}`);
+  }
+
+  private getAIInstance(): any {
     // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    const key = (apiKey && apiKey.trim() !== "") ? apiKey : envKey;
+    const key = (this.apiKey && this.apiKey.trim() !== "") ? this.apiKey : envKey;
     
-    // Check if it's a valid key
-    if (key && key.trim() !== "") {
+    if (key && key.trim() !== "" && key !== "MY_GEMINI_API_KEY") {
       try {
-        this.ai = new GoogleGenAI({ apiKey: key });
-        console.log(`GeminiService initialized with model ${modelName} and API Key.`);
+        return new GoogleGenAI({ apiKey: key });
       } catch (e) {
         console.error("Failed to initialize GoogleGenAI:", e);
       }
-    } else {
-      console.warn("No valid API Key found for GeminiService. Will check for platform key selection.");
     }
+    return null;
   }
 
   async hasApiKey(): Promise<boolean> {
-    if (this.ai) return true;
+    if (this.apiKey && this.apiKey.trim() !== "") return true;
     
-    // Check environment key again (might have been updated)
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (envKey && envKey.trim() !== "") {
-      try {
-        this.ai = new GoogleGenAI({ apiKey: envKey });
-        return true;
-      } catch (e) {
-        console.error("Failed to re-initialize GoogleGenAI with envKey:", e);
-      }
-    }
+    if (envKey && envKey.trim() !== "" && envKey !== "MY_GEMINI_API_KEY") return true;
     
-    // Check if platform has a selected key
     if (typeof window !== 'undefined' && (window as any).aistudio?.hasSelectedApiKey) {
-      const hasSelected = await (window as any).aistudio.hasSelectedApiKey();
-      if (hasSelected) return true;
+      return await (window as any).aistudio.hasSelectedApiKey();
     }
 
     return false;
@@ -50,11 +42,6 @@ export class GeminiService implements TranslationService {
   async openKeySelection(): Promise<void> {
     if (typeof window !== 'undefined' && (window as any).aistudio?.openSelectKey) {
       await (window as any).aistudio.openSelectKey();
-      // After selection, we might need to re-initialize
-      const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-      if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
-        this.ai = new GoogleGenAI({ apiKey: envKey });
-      }
     }
   }
 
@@ -65,15 +52,8 @@ export class GeminiService implements TranslationService {
       throw new Error("Translation aborted");
     }
 
-    // Re-check for key if not initialized (might have been selected via platform)
-    if (!this.ai) {
-      const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-      if (envKey && envKey.trim() !== "") {
-        this.ai = new GoogleGenAI({ apiKey: envKey });
-      }
-    }
-
-    if (!this.ai) {
+    const ai = this.getAIInstance();
+    if (!ai) {
       throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
     }
 
@@ -102,7 +82,7 @@ export class GeminiService implements TranslationService {
         throw new Error("Translation aborted");
       }
       try {
-        const response = await this.ai.models.generateContentStream({
+        const response = await ai.models.generateContentStream({
           model: this.modelName,
           contents: [
             {
@@ -171,7 +151,10 @@ export class GeminiService implements TranslationService {
           throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
         }
         if (isQuotaError) {
-          throw new Error("Bạn đã hết hạn mức sử dụng API (Quota exceeded). Nếu bạn dùng gói miễn phí, giới hạn là 15 yêu cầu/phút. Vui lòng đợi 1 phút hoặc kiểm tra lại API Key.");
+          throw new Error(`Bạn đã hết hạn mức sử dụng API (Quota exceeded). 
+            Nếu bạn dùng gói miễn phí, giới hạn là 15 yêu cầu/phút. 
+            Lỗi chi tiết: ${error.message || "Resource exhausted"}.
+            Vui lòng đợi 1 phút hoặc kiểm tra lại API Key trong phần Cài đặt.`);
         }
         if (isUnavailableError) {
           throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát.");
@@ -188,15 +171,8 @@ export class GeminiService implements TranslationService {
       throw new Error("Translation aborted");
     }
 
-    // Re-check for key if not initialized (might have been selected via platform)
-    if (!this.ai) {
-      const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-      if (envKey && envKey.trim() !== "") {
-        this.ai = new GoogleGenAI({ apiKey: envKey });
-      }
-    }
-
-    if (!this.ai) {
+    const ai = this.getAIInstance();
+    if (!ai) {
       throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
     }
 
@@ -225,7 +201,7 @@ export class GeminiService implements TranslationService {
         throw new Error("Translation aborted");
       }
       try {
-        const response = await this.ai.models.generateContent({
+        const response = await ai.models.generateContent({
           model: this.modelName,
           contents: [
             {
@@ -276,7 +252,10 @@ export class GeminiService implements TranslationService {
           throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
         }
         if (isQuotaError) {
-          throw new Error("Bạn đã hết hạn mức sử dụng API (Quota exceeded). Nếu bạn dùng gói miễn phí, giới hạn là 15 yêu cầu/phút. Vui lòng đợi 1 phút hoặc kiểm tra lại API Key.");
+          throw new Error(`Bạn đã hết hạn mức sử dụng API (Quota exceeded). 
+            Nếu bạn dùng gói miễn phí, giới hạn là 15 yêu cầu/phút. 
+            Lỗi chi tiết: ${error.message || "Resource exhausted"}.
+            Vui lòng đợi 1 phút hoặc kiểm tra lại API Key trong phần Cài đặt.`);
         }
         if (isUnavailableError) {
           throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát.");
@@ -288,15 +267,9 @@ export class GeminiService implements TranslationService {
   }
 
   async lookupMedicalTerm(term: string): Promise<any> {
-    // Re-check for key if not initialized (might have been selected via platform)
-    if (!this.ai) {
-      const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-      if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
-        this.ai = new GoogleGenAI({ apiKey: envKey });
-      }
-    }
+    const ai = this.getAIInstance();
 
-    if (!this.ai) {
+    if (!ai) {
       throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
     }
 
@@ -319,7 +292,7 @@ export class GeminiService implements TranslationService {
 
     while (retryCount <= MAX_RETRIES) {
       try {
-        const response = await this.ai.models.generateContent({
+        const response = await ai.models.generateContent({
           model: this.modelName,
           contents: [{ parts: [{ text: prompt }] }],
           config: {
@@ -372,7 +345,10 @@ export class GeminiService implements TranslationService {
         }
 
         if (isQuotaError) {
-          throw new Error("Bạn đã hết hạn mức sử dụng API (Quota exceeded). Nếu bạn dùng gói miễn phí, giới hạn là 15 yêu cầu/phút. Vui lòng đợi 1 phút hoặc kiểm tra lại API Key.");
+          throw new Error(`Bạn đã hết hạn mức sử dụng API (Quota exceeded). 
+            Nếu bạn dùng gói miễn phí, giới hạn là 15 yêu cầu/phút. 
+            Lỗi chi tiết: ${error.message || "Resource exhausted"}.
+            Vui lòng đợi 1 phút hoặc kiểm tra lại API Key trong phần Cài đặt.`);
         }
         if (isUnavailableError) {
           throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát.");
@@ -383,14 +359,9 @@ export class GeminiService implements TranslationService {
   }
 
   async performOCR(imageBuffer: string): Promise<string> {
-    if (!this.ai) {
-      const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-      if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
-        this.ai = new GoogleGenAI({ apiKey: envKey });
-      }
-    }
+    const ai = this.getAIInstance();
 
-    if (!this.ai) {
+    if (!ai) {
       throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
     }
 
@@ -408,7 +379,7 @@ export class GeminiService implements TranslationService {
     const prompt = "Hãy trích xuất văn bản từ hình ảnh này.";
 
     try {
-      const response = await this.ai.models.generateContent({
+      const response = await ai.models.generateContent({
         model: this.modelName,
         contents: [
           {
