@@ -200,6 +200,8 @@ export default function App() {
   const [activeTranslation, setActiveTranslation] = useState<{page: number, content: string, status: string} | null>(null);
   const translatingPagesRef = useRef<Set<number>>(new Set());
   const abortControllerRef = useRef<AbortController | null>(null);
+  const fileIdRef = useRef<number>(0);
+  const preTranslateControllersRef = useRef<Map<number, AbortController>>(new Map());
 
   useEffect(() => {
     translationsRef.current = translations;
@@ -263,7 +265,7 @@ export default function App() {
 
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [mobileViewMode, setMobileViewMode] = useState<'pdf' | 'translation'>('pdf');
-  const [autoTranslate, setAutoTranslate] = useState(true);
+  const [autoTranslate, setAutoTranslate] = useState(false);
   const [zoom, setZoom] = useState(0.82); // Default to 82% as requested
   const [isAutoFit, setIsAutoFit] = useState(true);
   
@@ -529,6 +531,19 @@ export default function App() {
   
   const clearFile = () => {
     if (fileUrl) URL.revokeObjectURL(fileUrl);
+    
+    // Increment fileId to invalidate all pending translations for the previous file
+    fileIdRef.current += 1;
+    
+    // Abort all pending translations
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    
+    preTranslateControllersRef.current.forEach(controller => controller.abort());
+    preTranslateControllersRef.current.clear();
+    
     setFile(null);
     setFileUrl(null);
     setPdfDoc(null);
@@ -538,6 +553,8 @@ export default function App() {
     setTranslations({});
     setPdfError(null);
     isRenderingRef.current = false;
+    translatingPagesRef.current.clear();
+    
     if (renderTaskRef.current) {
       renderTaskRef.current.cancel();
     }
@@ -571,10 +588,24 @@ export default function App() {
       if (fileUrl) URL.revokeObjectURL(fileUrl);
       if (pdfDoc) await pdfDoc.destroy();
 
+      // Increment fileId to invalidate all pending translations for the previous file
+      fileIdRef.current += 1;
+      
+      // Abort all pending translations
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+      
+      preTranslateControllersRef.current.forEach(controller => controller.abort());
+      preTranslateControllersRef.current.clear();
+      translatingPagesRef.current.clear();
+
       setFile(selectedFile);
       setTranslations({});
       setCurrentPage(1);
       setCurrentJob(1);
+      setAutoTranslate(false);
       setIsPdfLoading(true);
       setPdfError(null);
       
@@ -696,6 +727,8 @@ export default function App() {
   };
 
   const cancelTranslation = useCallback(() => {
+    const currentFileId = fileIdRef.current;
+    
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -706,16 +739,20 @@ export default function App() {
     // Update status of the page being translated to error or idle
     const targetPage = currentPage;
     if (translatingPagesRef.current.has(targetPage)) {
-      setTranslations(prev => ({
-        ...prev,
-        [targetPage]: { ...prev[targetPage], status: 'error', content: 'Đã dừng dịch thuật.' }
-      }));
+      if (fileIdRef.current === currentFileId) {
+        setTranslations(prev => ({
+          ...prev,
+          [targetPage]: { ...prev[targetPage], status: 'error', content: 'Đã dừng dịch thuật.' }
+        }));
+      }
       translatingPagesRef.current.delete(targetPage);
     }
   }, [currentPage]);
 
   const translateCurrentPage = useCallback(async (pageNumber?: number, force = false) => {
     const targetPage = pageNumber ?? currentPage;
+    const currentFileId = fileIdRef.current;
+    
     if (!canvasRef.current || !translationService.current) return;
 
     // Safety check: translateCurrentPage uses the global canvasRef, 
@@ -754,13 +791,15 @@ export default function App() {
     // Check if we have an API key before starting
     const hasKey = await translationService.current.hasApiKey();
     if (!hasKey) {
-      setTranslations(prev => ({
-        ...prev,
-        [targetPage]: { 
-          content: 'Thiếu API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn từ hệ thống.', 
-          status: 'error' 
-        }
-      }));
+      if (fileIdRef.current === currentFileId) {
+        setTranslations(prev => ({
+          ...prev,
+          [targetPage]: { 
+            content: 'Thiếu API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn từ hệ thống.', 
+            status: 'error' 
+          }
+        }));
+      }
       return;
     }
 
@@ -834,7 +873,11 @@ export default function App() {
       setActiveTranslation({ page: targetPage, content: fullContent, status: 'loading' });
       
       const finalResult = { content: fullContent, status: 'success' as const };
-      setTranslations(prev => ({ ...prev, [targetPage]: finalResult }));
+      
+      // Only update if we are still on the same file
+      if (fileIdRef.current === currentFileId) {
+        setTranslations(prev => ({ ...prev, [targetPage]: finalResult }));
+      }
       setActiveTranslation(null);
     } catch (error: any) {
       if (error.message === "Translation aborted" || error.name === 'AbortError') {
@@ -844,7 +887,10 @@ export default function App() {
       console.error("Translation Error:", error);
       const errorMessage = error instanceof Error ? error.message : 'Dịch thuật thất bại.';
       const errorResult = { content: errorMessage, status: 'error' as const };
-      setTranslations(prev => ({ ...prev, [targetPage]: errorResult }));
+      
+      if (fileIdRef.current === currentFileId) {
+        setTranslations(prev => ({ ...prev, [targetPage]: errorResult }));
+      }
       setActiveTranslation(null);
     } finally {
       translatingPagesRef.current.delete(targetPage);
@@ -857,6 +903,7 @@ export default function App() {
 
   const preTranslatePage = useCallback(async (pageNum: number, signal?: AbortSignal) => {
     if (!pdfDoc || !translationService.current || pageNum > numPages) return;
+    const currentFileId = fileIdRef.current;
 
     if (signal?.aborted) return;
 
@@ -934,7 +981,10 @@ export default function App() {
         }
         
         const finalResult = { content: fullContent, status: 'success' as const };
-        setTranslations(prev => ({ ...prev, [pageNum]: finalResult }));
+        
+        if (fileIdRef.current === currentFileId) {
+          setTranslations(prev => ({ ...prev, [pageNum]: finalResult }));
+        }
         
         // Clear active translation if it was this page
         if (pageNum === currentPageRef.current) {
@@ -962,20 +1012,27 @@ export default function App() {
     if (pdfDoc && autoTranslate && translations[currentPage]?.status === 'success' && !isTranslating) {
       // Look ahead up to 2 pages to maintain a buffer
       const pagesToBuffer = [currentPage + 1, currentPage + 2];
+      const controllers: AbortController[] = [];
       
       for (const pageNum of pagesToBuffer) {
         if (pageNum <= numPages && !translations[pageNum] && !translatingPagesRef.current.has(pageNum)) {
           const controller = new AbortController();
-          const timer = setTimeout(() => {
-            preTranslatePage(pageNum, controller.signal);
-          }, 800); // Reduced delay for more aggressive pre-translation
+          controllers.push(controller);
+          preTranslateControllersRef.current.set(pageNum, controller);
           
-          return () => {
-            clearTimeout(timer);
-            controller.abort();
-          };
+          const timer = setTimeout(() => {
+            preTranslatePage(pageNum, controller.signal).finally(() => {
+              preTranslateControllersRef.current.delete(pageNum);
+            });
+          }, 500);
+          
+          // Note: we don't return here, we want to start all timers
         }
       }
+
+      return () => {
+        controllers.forEach(c => c.abort());
+      };
     }
   }, [currentPage, pdfDoc, autoTranslate, translations, numPages, preTranslatePage, isTranslating]);
 
