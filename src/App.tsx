@@ -5,7 +5,6 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import * as pdfjs from 'pdfjs-dist';
-// @ts-ignore - Vite specific import
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
@@ -239,7 +238,6 @@ export default function App() {
     
     // Initial defaults
     const envKey = (typeof process !== 'undefined' ? (process.env.GEMINI_API_KEY || process.env.API_KEY) : null) || 
-                   // @ts-ignore - Vite specific
                    (import.meta.env.VITE_GEMINI_API_KEY);
     const defaultKey = (envKey && envKey.trim() !== "") ? envKey : '';
     
@@ -794,6 +792,8 @@ export default function App() {
               .join(' ');
           }).join('\n');
 
+          console.log(`Extracted text for page ${targetPage}:`, extractedText.substring(0, 500) + (extractedText.length > 500 ? "..." : ""));
+
           page.cleanup();
           
           // Only use text extraction if it actually found some content
@@ -839,15 +839,33 @@ export default function App() {
       
       let fullContent = "";
       let lastUpdateTime = Date.now();
+      let lastChunkTime = Date.now();
       const UPDATE_INTERVAL = 100; // Update UI every 100ms for smooth streaming without lag
+      const CHUNK_TIMEOUT = 20000; // 20 seconds timeout for a single chunk
 
-      for await (const chunk of stream) {
-        fullContent += chunk;
-        const now = Date.now();
-        if (now - lastUpdateTime > UPDATE_INTERVAL) {
-          setActiveTranslation({ page: targetPage, content: fullContent, status: 'loading' });
-          lastUpdateTime = now;
+      // Create a timeout monitor
+      const timeoutCheck = setInterval(() => {
+        if (Date.now() - lastChunkTime > CHUNK_TIMEOUT) {
+          console.error("Translation stream timed out after 20s of inactivity");
+          if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+          }
+          clearInterval(timeoutCheck);
         }
+      }, 1000);
+
+      try {
+        for await (const chunk of stream) {
+          fullContent += chunk;
+          lastChunkTime = Date.now();
+          const now = Date.now();
+          if (now - lastUpdateTime > UPDATE_INTERVAL) {
+            setActiveTranslation({ page: targetPage, content: fullContent, status: 'loading' });
+            lastUpdateTime = now;
+          }
+        }
+      } finally {
+        clearInterval(timeoutCheck);
       }
       
       // Final update to ensure everything is rendered
@@ -1056,7 +1074,6 @@ export default function App() {
     // Fallback to environment variables if no key is selected
     if (!key) {
       const envKey = (typeof process !== 'undefined' ? (process.env.GEMINI_API_KEY || process.env.API_KEY) : null) || 
-                     // @ts-ignore - Vite specific
                      (import.meta.env.VITE_GEMINI_API_KEY);
       key = envKey;
     }

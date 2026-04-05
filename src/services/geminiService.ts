@@ -14,7 +14,6 @@ export class GeminiService implements TranslationService {
   private getAIInstance(): any {
     // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio/Vercel
     const envKey = (typeof process !== 'undefined' ? (process.env.GEMINI_API_KEY || process.env.API_KEY) : null) || 
-                   // @ts-ignore - Vite specific
                    (import.meta.env.VITE_GEMINI_API_KEY);
     const key = (this.apiKey && this.apiKey.trim() !== "") ? this.apiKey : envKey;
     
@@ -32,7 +31,6 @@ export class GeminiService implements TranslationService {
     if (this.apiKey && this.apiKey.trim() !== "") return true;
     
     const envKey = (typeof process !== 'undefined' ? (process.env.GEMINI_API_KEY || process.env.API_KEY) : null) || 
-                   // @ts-ignore - Vite specific
                    (import.meta.env.VITE_GEMINI_API_KEY);
     if (envKey && envKey.trim() !== "" && envKey !== "MY_GEMINI_API_KEY") return true;
     
@@ -65,13 +63,13 @@ export class GeminiService implements TranslationService {
       Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
       Dịch ${text ? 'văn bản' : 'hình ảnh'} sang tiếng Việt, giữ nguyên định dạng Markdown.
       
-      YÊU CẦU QUAN TRỌNG VỀ ĐỊNH DẠNG:
-      1. GIỮ NGUYÊN CẤU TRÚC DÒNG: Mỗi dòng trong bản gốc phải tương ứng với một dòng trong bản dịch.
-      2. MỤC LỤC (TABLE OF CONTENTS): 
-         - Trình bày dưới dạng danh sách Markdown (sử dụng - hoặc 1., 2.).
+      YÊU CẦU QUAN TRỌNG:
+      1. TRUNG THỰC: Dịch đúng nội dung được cung cấp. KHÔNG tự ý thêm tiêu đề "MỤC LỤC" nếu bản gốc không có.
+      2. GIỮ NGUYÊN CẤU TRÚC: Mỗi dòng trong bản gốc phải tương ứng với một dòng trong bản dịch.
+      3. MỤC LỤC (TABLE OF CONTENTS): 
+         - CHỈ áp dụng định dạng mục lục nếu trang thực sự là mục lục.
+         - Trình bày dưới dạng danh sách Markdown.
          - Giữ nguyên các dấu chấm (....) và số trang ở cuối dòng.
-         - Đảm bảo mỗi mục nằm trên một dòng riêng biệt, không gộp dòng.
-      3. TIÊU ĐỀ VÀ DANH SÁCH: Sử dụng các cấp độ tiêu đề Markdown (#, ##, ###) và danh sách phù hợp.
       4. THUẬT NGỮ: Sử dụng thuật ngữ y khoa chuyên ngành chuẩn xác.
       5. KHÔNG thêm lời dẫn, giải thích hay bất kỳ nội dung nào ngoài bản dịch.
     `;
@@ -188,13 +186,13 @@ export class GeminiService implements TranslationService {
       Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
       Dịch ${text ? 'văn bản' : 'hình ảnh'} sang tiếng Việt, giữ nguyên định dạng Markdown.
       
-      YÊU CẦU QUAN TRỌNG VỀ ĐỊNH DẠNG:
-      1. GIỮ NGUYÊN CẤU TRÚC DÒNG: Mỗi dòng trong bản gốc phải tương ứng với một dòng trong bản dịch.
-      2. MỤC LỤC (TABLE OF CONTENTS): 
-         - Trình bày dưới dạng danh sách Markdown (sử dụng - hoặc 1., 2.).
+      YÊU CẦU QUAN TRỌNG:
+      1. TRUNG THỰC: Dịch đúng nội dung được cung cấp. KHÔNG tự ý thêm tiêu đề "MỤC LỤC" nếu bản gốc không có.
+      2. GIỮ NGUYÊN CẤU TRÚC: Mỗi dòng trong bản gốc phải tương ứng với một dòng trong bản dịch.
+      3. MỤC LỤC (TABLE OF CONTENTS): 
+         - CHỈ áp dụng định dạng mục lục nếu trang thực sự là mục lục.
+         - Trình bày dưới dạng danh sách Markdown.
          - Giữ nguyên các dấu chấm (....) và số trang ở cuối dòng.
-         - Đảm bảo mỗi mục nằm trên một dòng riêng biệt, không gộp dòng.
-      3. TIÊU ĐỀ VÀ DANH SÁCH: Sử dụng các cấp độ tiêu đề Markdown (#, ##, ###) và danh sách phù hợp.
       4. THUẬT NGỮ: Sử dụng thuật ngữ y khoa chuyên ngành chuẩn xác.
       5. KHÔNG thêm lời dẫn, giải thích hay bất kỳ nội dung nào ngoài bản dịch.
     `;
