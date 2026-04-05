@@ -9,6 +9,8 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
 import { MedicalDictionary } from './components/MedicalDictionary';
 
+import { Logo, LogoWithText } from './components/Logo';
+
 // Use a reliable CDN for the worker that matches the installed version exactly
 // jsDelivr is often faster and more reliable in Vietnam/Asia than unpkg
 pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -1341,15 +1343,7 @@ export default function App() {
       <div className={cn("h-screen flex flex-col bg-slate-50 overflow-hidden", isFullScreen && "fixed inset-0 z-50")}>
       {/* Header */}
       <header className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4 shrink-0 shadow-sm z-30">
-        <div className="flex items-center gap-2">
-          <div className="bg-indigo-600 p-1.5 rounded-lg">
-            <Languages className="text-white w-5 h-5" />
-          </div>
-          <div className="hidden sm:block">
-            <h1 className="font-display font-bold text-lg text-slate-800 tracking-tight leading-none">MediTrans AI</h1>
-            <p className="text-[8px] text-slate-500 uppercase tracking-widest font-bold mt-0.5">Medical Translation Expert</p>
-          </div>
-        </div>
+        <LogoWithText />
 
         <div className="flex items-center gap-2">
           {file && (
@@ -1446,8 +1440,8 @@ export default function App() {
             >
               <div className="mb-8 relative inline-block">
                 <div className="absolute -inset-4 bg-indigo-100 rounded-full blur-2xl opacity-50 animate-pulse" />
-                <div className="relative bg-white p-8 rounded-3xl shadow-xl border border-slate-100 z-10">
-                  <Upload className="w-16 h-16 text-indigo-600 mx-auto mb-6" />
+                <div className="relative bg-white p-10 rounded-3xl shadow-xl border border-slate-100 z-10">
+                  <Logo size={80} className="mx-auto mb-8" />
                   <h2 className="text-2xl font-display font-bold text-slate-800 mb-2">Tải lên tài liệu y khoa</h2>
                   <p className="text-slate-500 mb-8">Hỗ trợ file PDF lên tới 200MB. Dịch thuật chuyên sâu giữ nguyên định dạng.</p>
                   
