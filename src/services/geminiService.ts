@@ -14,18 +14,25 @@ export class GeminiService implements TranslationService {
   }
 
   private getAIInstance(): any {
-    // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio
+    // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio, 3. Fallback Key
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    const key = (this.apiKey && this.apiKey.trim() !== "") ? this.apiKey : envKey;
+    const fallbackKey = "AIzaSyCNmiXe5GSlUcia4CEI78O50VjrD6WwTK0";
     
-    if (key && key.trim() !== "" && key !== "MY_GEMINI_API_KEY") {
+    let key = (this.apiKey && this.apiKey.trim() !== "") ? this.apiKey : envKey;
+    
+    // If no key is found or it's a placeholder, use the fallback
+    if (!key || key.trim() === "" || key === "MY_GEMINI_API_KEY") {
+      key = fallbackKey;
+    }
+    
+    if (key && key.trim() !== "") {
       // Cache the instance if the key hasn't changed
       if (this.aiInstance && this.lastKey === key) {
         return this.aiInstance;
       }
 
       try {
-        console.log(`[MediTrans] Initializing new GoogleGenAI instance...`);
+        console.log(`[MediTrans] Initializing GoogleGenAI instance...`);
         this.aiInstance = new GoogleGenAI({ apiKey: key });
         this.lastKey = key;
         return this.aiInstance;
@@ -37,16 +44,8 @@ export class GeminiService implements TranslationService {
   }
 
   async hasApiKey(): Promise<boolean> {
-    if (this.apiKey && this.apiKey.trim() !== "") return true;
-    
-    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (envKey && envKey.trim() !== "" && envKey !== "MY_GEMINI_API_KEY") return true;
-    
-    if (typeof window !== 'undefined' && (window as any).aistudio?.hasSelectedApiKey) {
-      return await (window as any).aistudio.hasSelectedApiKey();
-    }
-
-    return false;
+    // Always returns true now because we have a fallback key
+    return true;
   }
 
   async openKeySelection(): Promise<void> {
@@ -73,9 +72,11 @@ export class GeminiService implements TranslationService {
       Giữ nguyên cấu trúc xuống dòng, không gộp các mục.
       Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn.
       
-      LƯU Ý QUAN TRỌNG:
-      - Đối với trang Mục lục (Contents) có nhiều dấu chấm nối (leader dots), hãy dịch nội dung và giữ lại một số lượng dấu chấm vừa đủ (khoảng 3-5 dấu) để phân tách nội dung và số trang. 
-      - TUYỆT ĐỐI KHÔNG lặp lại hàng loạt dấu chấm vô nghĩa.
+      LƯU Ý QUAN TRỌNG VỀ TRÌNH BÀY MỤC LỤC (CONTENTS):
+      - Mỗi mục trong mục lục PHẢI nằm trên một dòng riêng biệt. TUYỆT ĐỐI KHÔNG gộp nhiều mục vào một dòng.
+      - Giữ nguyên cấu trúc phân cấp (ví dụ: các mục con 1.1, 1.2 nên được thụt lề hoặc trình bày rõ ràng).
+      - Đối với dấu chấm nối (leader dots), hãy dùng một lượng vừa đủ (khoảng 3-5 dấu) để tách biệt tên chương và số trang.
+      - Đảm bảo số trang nằm ở cuối dòng của mỗi mục tương ứng.
       - Nếu gặp các ký tự lặp lại liên tục trong ảnh, hãy xử lý thông minh, không được lặp lại chúng trong kết quả dịch.
     `;
 
@@ -189,9 +190,11 @@ export class GeminiService implements TranslationService {
       Giữ nguyên cấu trúc xuống dòng, không gộp các mục.
       Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn.
       
-      LƯU Ý QUAN TRỌNG:
-      - Đối với trang Mục lục (Contents) có nhiều dấu chấm nối (leader dots), hãy dịch nội dung và giữ lại một số lượng dấu chấm vừa đủ (khoảng 3-5 dấu) để phân tách nội dung và số trang. 
-      - TUYỆT ĐỐI KHÔNG lặp lại hàng loạt dấu chấm vô nghĩa.
+      LƯU Ý QUAN TRỌNG VỀ TRÌNH BÀY MỤC LỤC (CONTENTS):
+      - Mỗi mục trong mục lục PHẢI nằm trên một dòng riêng biệt. TUYỆT ĐỐI KHÔNG gộp nhiều mục vào một dòng.
+      - Giữ nguyên cấu trúc phân cấp (ví dụ: các mục con 1.1, 1.2 nên được thụt lề hoặc trình bày rõ ràng).
+      - Đối với dấu chấm nối (leader dots), hãy dùng một lượng vừa đủ (khoảng 3-5 dấu) để tách biệt tên chương và số trang.
+      - Đảm bảo số trang nằm ở cuối dòng của mỗi mục tương ứng.
       - Nếu gặp các ký tự lặp lại liên tục trong ảnh, hãy xử lý thông minh, không được lặp lại chúng trong kết quả dịch.
     `;
 

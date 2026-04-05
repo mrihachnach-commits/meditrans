@@ -240,7 +240,8 @@ export default function App() {
     
     // Initial defaults
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    const defaultKey = (envKey && envKey.trim() !== "") ? envKey : '';
+    const fallbackKey = "AIzaSyCNmiXe5GSlUcia4CEI78O50VjrD6WwTK0";
+    const defaultKey = (envKey && envKey.trim() !== "" && envKey !== "MY_GEMINI_API_KEY") ? envKey : fallbackKey;
     
     return {
       'gemini-flash': defaultKey,
