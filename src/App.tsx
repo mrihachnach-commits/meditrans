@@ -46,6 +46,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
+import { saveAs } from 'file-saver';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { GeminiService } from './services/geminiService';
@@ -411,19 +413,74 @@ export default function App() {
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     const content = translations[currentPage]?.content;
     if (!content) return;
 
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `MediTrans_Page_${currentPage}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      // Create a simple docx document from the markdown content
+      // We'll split by lines and handle basic markdown symbols for a cleaner look
+      const lines = content.split('\n');
+      const children = lines.map(line => {
+        let text = line.trim();
+        if (!text) return new Paragraph({ spacing: { after: 120 }, children: [new TextRun("")] });
+
+        let isHeading = false;
+        let headingLevel: any = undefined;
+
+        if (text.startsWith('### ')) {
+          text = text.replace('### ', '');
+          isHeading = true;
+          headingLevel = HeadingLevel.HEADING_3;
+        } else if (text.startsWith('## ')) {
+          text = text.replace('## ', '');
+          isHeading = true;
+          headingLevel = HeadingLevel.HEADING_2;
+        } else if (text.startsWith('# ')) {
+          text = text.replace('# ', '');
+          isHeading = true;
+          headingLevel = HeadingLevel.HEADING_1;
+        }
+
+        // Handle bullet points
+        let isBullet = false;
+        if (text.startsWith('- ') || text.startsWith('* ')) {
+          text = text.substring(2);
+          isBullet = true;
+        }
+
+        return new Paragraph({
+          heading: isHeading ? headingLevel : undefined,
+          bullet: isBullet ? { level: 0 } : undefined,
+          spacing: {
+            after: 120,
+          },
+          children: [
+            new TextRun({
+              text: text,
+              size: isHeading ? 28 : 24, // Slightly larger for headings
+              font: "Times New Roman",
+              bold: isHeading
+            })
+          ]
+        });
+      });
+
+      const doc = new Document({
+        sections: [{
+          properties: {},
+          children: children,
+        }],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, `MediTrans_Trang_${currentPage}.docx`);
+    } catch (error) {
+      console.error("Error generating docx:", error);
+      // Fallback to markdown if docx fails
+      const blob = new Blob([content], { type: 'text/markdown' });
+      saveAs(blob, `MediTrans_Trang_${currentPage}.md`);
+    }
   };
 
   const [fileUrl, setFileUrl] = useState<string | null>(null);
