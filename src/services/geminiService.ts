@@ -46,7 +46,7 @@ export class GeminiService implements TranslationService {
   }
 
   async *translateMedicalPageStream(options: TranslationOptions): AsyncGenerator<string> {
-    const { imageBuffer, pageNumber, signal } = options;
+    const { imageBuffer, text, pageNumber, signal } = options;
     
     if (signal?.aborted) {
       throw new Error("Translation aborted");
@@ -59,7 +59,7 @@ export class GeminiService implements TranslationService {
 
     const systemInstruction = `
       Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
-      Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
+      Dịch ${text ? 'văn bản' : 'hình ảnh'} sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
       
       YÊU CẦU QUAN TRỌNG VỀ ĐỊNH DẠNG:
       1. Giữ nguyên cấu trúc xuống dòng của bản gốc. Mỗi mục trong Mục lục (Table of Contents) hoặc Danh sách phải nằm trên một dòng riêng biệt.
@@ -68,7 +68,9 @@ export class GeminiService implements TranslationService {
       4. Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
     `;
 
-    const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
+    const prompt = text 
+      ? `Đây là nội dung văn bản từ trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung này sang tiếng Việt một cách chuyên nghiệp:\n\n${text}`
+      : `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
 
     const MAX_RETRIES = 3;
     let retryCount = 0;
@@ -78,21 +80,19 @@ export class GeminiService implements TranslationService {
         throw new Error("Translation aborted");
       }
       try {
+        const parts: any[] = [{ text: prompt }];
+        if (imageBuffer && !text) {
+          parts.push({
+            inlineData: {
+              mimeType: "image/jpeg",
+              data: imageBuffer.split(",")[1],
+            },
+          });
+        }
+
         const response = await ai.models.generateContentStream({
           model: this.modelName,
-          contents: [
-            {
-              parts: [
-                { text: prompt },
-                {
-                  inlineData: {
-                    mimeType: "image/jpeg",
-                    data: imageBuffer.split(",")[1],
-                  },
-                },
-              ],
-            },
-          ],
+          contents: [{ parts }],
           config: {
             systemInstruction: systemInstruction,
             temperature: 0.1,
@@ -165,7 +165,7 @@ export class GeminiService implements TranslationService {
   }
 
   async translateMedicalPage(options: TranslationOptions): Promise<string> {
-    const { imageBuffer, pageNumber, signal } = options;
+    const { imageBuffer, text, pageNumber, signal } = options;
     
     if (signal?.aborted) {
       throw new Error("Translation aborted");
@@ -178,7 +178,7 @@ export class GeminiService implements TranslationService {
 
     const systemInstruction = `
       Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
-      Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
+      Dịch ${text ? 'văn bản' : 'hình ảnh'} sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
       
       YÊU CẦU QUAN TRỌNG VỀ ĐỊNH DẠNG:
       1. Giữ nguyên cấu trúc xuống dòng của bản gốc. Mỗi mục trong Mục lục (Table of Contents) hoặc Danh sách phải nằm trên một dòng riêng biệt.
@@ -187,7 +187,9 @@ export class GeminiService implements TranslationService {
       4. Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
     `;
 
-    const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
+    const prompt = text 
+      ? `Đây là nội dung văn bản từ trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung này sang tiếng Việt một cách chuyên nghiệp:\n\n${text}`
+      : `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
 
     const MAX_RETRIES = 3;
     let retryCount = 0;
@@ -197,21 +199,19 @@ export class GeminiService implements TranslationService {
         throw new Error("Translation aborted");
       }
       try {
+        const parts: any[] = [{ text: prompt }];
+        if (imageBuffer && !text) {
+          parts.push({
+            inlineData: {
+              mimeType: "image/jpeg",
+              data: imageBuffer.split(",")[1],
+            },
+          });
+        }
+
         const response = await ai.models.generateContent({
           model: this.modelName,
-          contents: [
-            {
-              parts: [
-                { text: prompt },
-                {
-                  inlineData: {
-                    mimeType: "image/jpeg",
-                    data: imageBuffer.split(",")[1],
-                  },
-                },
-              ],
-            },
-          ],
+          contents: [{ parts }],
           config: {
             systemInstruction: systemInstruction,
             temperature: 0.1,

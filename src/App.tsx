@@ -263,6 +263,11 @@ export default function App() {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [mobileViewMode, setMobileViewMode] = useState<'pdf' | 'translation'>('pdf');
   const [autoTranslate, setAutoTranslate] = useState(true);
+  const [useOCR, setUseOCR] = useState(false);
+  const useOCRRef = useRef(false);
+  useEffect(() => {
+    useOCRRef.current = useOCR;
+  }, [useOCR]);
   const [zoom, setZoom] = useState(0.82); // Default to 82% as requested
   const [isAutoFit, setIsAutoFit] = useState(true);
   
@@ -756,29 +761,54 @@ export default function App() {
     translatingPagesRef.current.add(targetPage);
 
     try {
-      // Create a temporary canvas for optimized capture
-      const originalCanvas = canvasRef.current;
-      const MAX_DIMENSION = 1600; // Optimized for OCR without being too large
-      
-      let captureCanvas = originalCanvas;
-      
-      // Resize if the original is too large to reduce payload size and API latency
-      if (originalCanvas.width > MAX_DIMENSION || originalCanvas.height > MAX_DIMENSION) {
-        const tempCanvas = document.createElement('canvas');
-        const ratio = Math.min(MAX_DIMENSION / originalCanvas.width, MAX_DIMENSION / originalCanvas.height);
-        tempCanvas.width = originalCanvas.width * ratio;
-        tempCanvas.height = originalCanvas.height * ratio;
-        
-        const tempCtx = tempCanvas.getContext('2d');
-        if (tempCtx) {
-          tempCtx.drawImage(originalCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
-          captureCanvas = tempCanvas;
+      let text: string | undefined = undefined;
+      let imageBuffer: string | undefined = undefined;
+
+      // If OCR is disabled, try to extract text from the PDF directly
+      if (!useOCRRef.current && pdfDoc) {
+        try {
+          const page = await pdfDoc.getPage(targetPage);
+          const textContent = await page.getTextContent();
+          const extractedText = textContent.items.map((item: any) => item.str).join(' ');
+          page.cleanup();
+          
+          // Only use text extraction if it actually found some content
+          if (extractedText.trim().length > 10) {
+            text = extractedText;
+          }
+        } catch (e) {
+          console.warn("Failed to extract text from PDF page:", e);
         }
       }
 
-      const imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.8); // JPEG is generally faster to encode than WebP
+      // If we don't have text (either OCR is on or extraction failed), capture the canvas
+      if (!text) {
+        // Create a temporary canvas for optimized capture
+        const originalCanvas = canvasRef.current;
+        const MAX_DIMENSION = 1600; // Optimized for OCR without being too large
+        
+        let captureCanvas = originalCanvas;
+        
+        // Resize if the original is too large to reduce payload size and API latency
+        if (originalCanvas.width > MAX_DIMENSION || originalCanvas.height > MAX_DIMENSION) {
+          const tempCanvas = document.createElement('canvas');
+          const ratio = Math.min(MAX_DIMENSION / originalCanvas.width, MAX_DIMENSION / originalCanvas.height);
+          tempCanvas.width = originalCanvas.width * ratio;
+          tempCanvas.height = originalCanvas.height * ratio;
+          
+          const tempCtx = tempCanvas.getContext('2d');
+          if (tempCtx) {
+            tempCtx.drawImage(originalCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
+            captureCanvas = tempCanvas;
+          }
+        }
+
+        imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.8); // JPEG is generally faster to encode than WebP
+      }
+
       const stream = translationService.current.translateMedicalPageStream({
         imageBuffer,
+        text,
         pageNumber: targetPage,
         signal
       });
@@ -835,43 +865,68 @@ export default function App() {
     translatingPagesRef.current.add(pageNum);
     
     try {
-      const page = await pdfDoc.getPage(pageNum);
-      if (signal?.aborted) {
-        page.cleanup();
-        return;
+      let text: string | undefined = undefined;
+      let imageBuffer: string | undefined = undefined;
+
+      // If OCR is disabled, try to extract text from the PDF directly
+      if (!useOCRRef.current) {
+        try {
+          const page = await pdfDoc.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          const extractedText = textContent.items.map((item: any) => item.str).join(' ');
+          page.cleanup();
+          
+          if (extractedText.trim().length > 10) {
+            text = extractedText;
+          }
+        } catch (e) {
+          console.warn(`Failed to extract text from PDF page ${pageNum}:`, e);
+        }
       }
 
-      // Use a fixed scale for pre-translation OCR to ensure consistency and quality
-      const viewport = page.getViewport({ scale: 2 }); 
-      
-      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      const context = canvas.getContext('2d');
-      
-      if (context) {
-        const renderTask = page.render({
-          canvasContext: context,
-          viewport: viewport,
-        } as any);
-        
-        if (signal) {
-          signal.addEventListener('abort', () => renderTask.cancel());
-        }
-
-        await renderTask.promise;
-        
+      if (!text) {
+        const page = await pdfDoc.getPage(pageNum);
         if (signal?.aborted) {
           page.cleanup();
           return;
         }
 
-        const imageBuffer = canvas.toDataURL('image/jpeg', 0.8);
-        const stream = translationService.current.translateMedicalPageStream({
-          imageBuffer,
-          pageNumber: pageNum,
-          signal
-        });
+        // Use a fixed scale for pre-translation OCR to ensure consistency and quality
+        const viewport = page.getViewport({ scale: 2 }); 
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const context = canvas.getContext('2d');
+        
+        if (context) {
+          const renderTask = page.render({
+            canvasContext: context,
+            viewport: viewport,
+          } as any);
+          
+          if (signal) {
+            signal.addEventListener('abort', () => renderTask.cancel());
+          }
+
+          await renderTask.promise;
+          
+          if (signal?.aborted) {
+            page.cleanup();
+            return;
+          }
+
+          imageBuffer = canvas.toDataURL('image/jpeg', 0.8);
+        }
+        page.cleanup();
+      }
+
+      const stream = translationService.current.translateMedicalPageStream({
+        imageBuffer,
+        text,
+        pageNumber: pageNum,
+        signal
+      });
         
         let fullContent = "";
         let lastUpdateTime = Date.now();
@@ -907,9 +962,6 @@ export default function App() {
           setActiveTranslation(null);
           setIsTranslating(false);
         }
-      }
-      
-      page.cleanup();
     } catch (error: any) {
       if (error.message === "Translation aborted" || error.name === 'AbortError') {
         return;
@@ -1628,6 +1680,23 @@ export default function App() {
                   )}
 
                   {isTranslating && <div className="h-4 w-px bg-slate-200" />}
+
+                  <button 
+                    onClick={() => setUseOCR(!useOCR)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-2 py-0.5 rounded-full transition-all border",
+                      useOCR 
+                        ? "bg-indigo-50 border-indigo-100 text-indigo-600" 
+                        : "bg-slate-50 border-slate-100 text-slate-400 hover:text-slate-500"
+                    )}
+                    title="Dịch hình ảnh (OCR)"
+                  >
+                    <div className={cn(
+                      "w-1.5 h-1.5 rounded-full",
+                      useOCR ? "bg-indigo-500 animate-pulse" : "bg-slate-300"
+                    )} />
+                    <span className="text-[9px] font-black uppercase tracking-tight">OCR</span>
+                  </button>
 
                   <button 
                     onClick={() => setAutoTranslate(!autoTranslate)}
