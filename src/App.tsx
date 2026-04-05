@@ -46,7 +46,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, PageBreak, AlignmentType } from 'docx';
 import { saveAs } from 'file-saver';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -188,6 +188,7 @@ export default function App() {
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [currentJob, setCurrentJob] = useState(1);
   const PAGES_PER_JOB = 100;
   const totalJobs = Math.ceil(numPages / PAGES_PER_JOB);
@@ -233,7 +234,7 @@ export default function App() {
     
     // Initial defaults
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    const defaultKey = (envKey && envKey.trim() !== "") ? envKey : '';
+    const defaultKey = (envKey && envKey.trim() !== "" && envKey !== "MY_GEMINI_API_KEY") ? envKey : '';
     
     return {
       'gemini-flash': defaultKey,
@@ -413,73 +414,111 @@ export default function App() {
     }
   };
 
-  const handleDownload = async () => {
-    const content = translations[currentPage]?.content;
-    if (!content) return;
+  const handleDownload = async (pageNums?: number[]) => {
+    const pagesToDownload = pageNums || [currentPage];
+    const docsToCombine = pagesToDownload
+      .sort((a, b) => a - b)
+      .map(p => ({ page: p, content: translations[p]?.content }))
+      .filter(p => p.content);
+
+    if (docsToCombine.length === 0) return;
 
     try {
-      // Create a simple docx document from the markdown content
-      // We'll split by lines and handle basic markdown symbols for a cleaner look
-      const lines = content.split('\n');
-      const children = lines.map(line => {
-        let text = line.trim();
-        if (!text) return new Paragraph({ spacing: { after: 120 }, children: [new TextRun("")] });
-
-        let isHeading = false;
-        let headingLevel: any = undefined;
-
-        if (text.startsWith('### ')) {
-          text = text.replace('### ', '');
-          isHeading = true;
-          headingLevel = HeadingLevel.HEADING_3;
-        } else if (text.startsWith('## ')) {
-          text = text.replace('## ', '');
-          isHeading = true;
-          headingLevel = HeadingLevel.HEADING_2;
-        } else if (text.startsWith('# ')) {
-          text = text.replace('# ', '');
-          isHeading = true;
-          headingLevel = HeadingLevel.HEADING_1;
+      const allChildren: Paragraph[] = [];
+      
+      docsToCombine.forEach((item, index) => {
+        // Add a header for the page if downloading multiple
+        if (docsToCombine.length > 1) {
+          allChildren.push(new Paragraph({
+            heading: HeadingLevel.HEADING_1,
+            alignment: AlignmentType.CENTER,
+            spacing: { before: index === 0 ? 0 : 400, after: 200 },
+            children: [
+              new TextRun({ 
+                text: `Trang ${item.page}`, 
+                bold: true, 
+                color: "4F46E5",
+                size: 32
+              })
+            ],
+          }));
         }
 
-        // Handle bullet points
-        let isBullet = false;
-        if (text.startsWith('- ') || text.startsWith('* ')) {
-          text = text.substring(2);
-          isBullet = true;
-        }
+        const lines = item.content!.split('\n');
+        lines.forEach(line => {
+          let text = line.trim();
+          if (!text) {
+            allChildren.push(new Paragraph({ spacing: { after: 120 }, children: [new TextRun("")] }));
+            return;
+          }
 
-        return new Paragraph({
-          heading: isHeading ? headingLevel : undefined,
-          bullet: isBullet ? { level: 0 } : undefined,
-          spacing: {
-            after: 120,
-          },
-          children: [
-            new TextRun({
-              text: text,
-              size: isHeading ? 28 : 24, // Slightly larger for headings
-              font: "Times New Roman",
-              bold: isHeading
-            })
-          ]
+          let isHeading = false;
+          let headingLevel: any = undefined;
+
+          if (text.startsWith('### ')) {
+            text = text.replace('### ', '');
+            isHeading = true;
+            headingLevel = HeadingLevel.HEADING_3;
+          } else if (text.startsWith('## ')) {
+            text = text.replace('## ', '');
+            isHeading = true;
+            headingLevel = HeadingLevel.HEADING_2;
+          } else if (text.startsWith('# ')) {
+            text = text.replace('# ', '');
+            isHeading = true;
+            headingLevel = HeadingLevel.HEADING_1;
+          }
+
+          // Handle bullet points
+          let isBullet = false;
+          if (text.startsWith('- ') || text.startsWith('* ')) {
+            text = text.substring(2);
+            isBullet = true;
+          }
+
+          allChildren.push(new Paragraph({
+            heading: isHeading ? headingLevel : undefined,
+            bullet: isBullet ? { level: 0 } : undefined,
+            spacing: {
+              after: 120,
+            },
+            children: [
+              new TextRun({
+                text: text,
+                size: isHeading ? 28 : 24, // Slightly larger for headings
+                font: "Times New Roman",
+                bold: isHeading
+              })
+            ]
+          }));
         });
+
+        // Add page break between pages except the last one
+        if (index < docsToCombine.length - 1) {
+          allChildren.push(new Paragraph({
+            children: [new PageBreak()],
+          }));
+        }
       });
 
       const doc = new Document({
         sections: [{
           properties: {},
-          children: children,
+          children: allChildren,
         }],
       });
 
       const blob = await Packer.toBlob(doc);
-      saveAs(blob, `MediTrans_Trang_${currentPage}.docx`);
+      const fileName = docsToCombine.length === 1 
+        ? `MediTrans_Trang_${docsToCombine[0].page}.docx`
+        : `MediTrans_BanDich_TongHop_${docsToCombine.length}_trang.docx`;
+      saveAs(blob, fileName);
     } catch (error) {
       console.error("Error generating docx:", error);
       // Fallback to markdown if docx fails
-      const blob = new Blob([content], { type: 'text/markdown' });
-      saveAs(blob, `MediTrans_Trang_${currentPage}.md`);
+      const combinedMarkdown = docsToCombine.map(d => `# Trang ${d.page}\n\n${d.content}`).join('\n\n---\n\n');
+      const blob = new Blob([combinedMarkdown], { type: 'text/markdown' });
+      saveAs(blob, `MediTrans_BanDich_TongHop.md`);
     }
   };
 
@@ -1631,12 +1670,36 @@ export default function App() {
                 
                 <div className="flex items-center gap-2 min-w-max ml-4">
                   {translations[currentPage]?.status === 'success' && (
-                    <button 
-                      onClick={handleDownload}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 uppercase tracking-tighter transition-all border border-indigo-100"
-                    >
-                      <Download className="w-3.5 h-3.5" /> Tải xuống
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button 
+                        onClick={() => {
+                          const newSelected = new Set(selectedPages);
+                          if (newSelected.has(currentPage)) {
+                            newSelected.delete(currentPage);
+                          } else {
+                            newSelected.add(currentPage);
+                          }
+                          setSelectedPages(newSelected);
+                        }}
+                        className={cn(
+                          "flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all border",
+                          selectedPages.has(currentPage)
+                            ? "bg-indigo-600 text-white border-indigo-600"
+                            : "bg-white text-slate-400 border-slate-200 hover:border-indigo-200 hover:text-indigo-500"
+                        )}
+                        title={selectedPages.has(currentPage) ? "Bỏ chọn trang này" : "Chọn trang này để tải tổng hợp"}
+                      >
+                        <CheckCircle2 className={cn("w-3.5 h-3.5", selectedPages.has(currentPage) ? "text-white" : "text-slate-300")} />
+                        {selectedPages.has(currentPage) ? 'Đã chọn' : 'Chọn tải'}
+                      </button>
+
+                      <button 
+                        onClick={() => handleDownload()}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 uppercase tracking-tighter transition-all border border-indigo-100"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Tải xuống
+                      </button>
+                    </div>
                   )}
                   <button 
                     onClick={() => translateCurrentPage(currentPage, true)}
@@ -2336,6 +2399,50 @@ export default function App() {
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Batch Download Floating Bar */}
+      <AnimatePresence>
+        {selectedPages.size > 0 && (
+          <motion.div 
+            initial={{ y: 100, opacity: 0, x: '-50%' }}
+            animate={{ y: 0, opacity: 1, x: '-50%' }}
+            exit={{ y: 100, opacity: 0, x: '-50%' }}
+            className="fixed bottom-8 md:bottom-12 left-1/2 z-[70] bg-indigo-600 text-white px-4 md:px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 md:gap-4 border border-indigo-500 w-[90%] md:w-auto"
+          >
+            <div className="flex flex-col shrink-0">
+              <span className="text-[8px] md:text-[10px] font-black uppercase tracking-widest opacity-80">Đã chọn</span>
+              <span className="text-xs md:text-sm font-bold">{selectedPages.size} trang</span>
+            </div>
+            <div className="h-8 w-px bg-indigo-500/50 shrink-0" />
+            <div className="flex items-center gap-2 flex-1 justify-end">
+              <button 
+                onClick={() => setSelectedPages(new Set())}
+                className="px-2 md:px-3 py-1.5 hover:bg-indigo-700 rounded-xl text-[9px] md:text-[10px] font-bold transition-colors whitespace-nowrap"
+              >
+                Hủy chọn
+              </button>
+              <button 
+                onClick={() => {
+                  const translatedPages = Object.keys(translations)
+                    .map(Number)
+                    .filter(p => translations[p]?.status === 'success');
+                  setSelectedPages(new Set(translatedPages));
+                }}
+                className="hidden md:block px-3 py-1.5 hover:bg-indigo-700 rounded-xl text-[10px] font-bold transition-colors whitespace-nowrap"
+              >
+                Chọn tất cả đã dịch
+              </button>
+              <button 
+                onClick={() => handleDownload(Array.from(selectedPages))}
+                className="bg-white text-indigo-600 px-3 md:px-4 py-2 rounded-xl text-[10px] md:text-xs font-black uppercase tracking-tight hover:bg-indigo-50 transition-all shadow-lg active:scale-95 flex items-center gap-1.5 md:gap-2 whitespace-nowrap"
+              >
+                <Download className="w-3.5 h-3.5 md:w-4 h-4" />
+                Tải file Word chung
+              </button>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 

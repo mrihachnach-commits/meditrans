@@ -14,8 +14,13 @@ export class GeminiService implements TranslationService {
   private getAIInstance(): any {
     // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    const key = (this.apiKey && this.apiKey.trim() !== "") ? this.apiKey : envKey;
+    let key = (this.apiKey && this.apiKey.trim() !== "") ? this.apiKey : envKey;
     
+    // Fallback to global if process.env was shadowed/static or empty
+    if (!key || key === "MY_GEMINI_API_KEY" || key.trim() === "") {
+        key = (window as any).process?.env?.GEMINI_API_KEY || (window as any).process?.env?.API_KEY;
+    }
+
     if (key && key.trim() !== "" && key !== "MY_GEMINI_API_KEY") {
       try {
         return new GoogleGenAI({ apiKey: key });
@@ -32,6 +37,10 @@ export class GeminiService implements TranslationService {
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
     if (envKey && envKey.trim() !== "" && envKey !== "MY_GEMINI_API_KEY") return true;
     
+    // Check dynamic process.env
+    const dynamicKey = (window as any).process?.env?.GEMINI_API_KEY || (window as any).process?.env?.API_KEY;
+    if (dynamicKey && dynamicKey.trim() !== "" && dynamicKey !== "MY_GEMINI_API_KEY") return true;
+
     if (typeof window !== 'undefined' && (window as any).aistudio?.hasSelectedApiKey) {
       return await (window as any).aistudio.hasSelectedApiKey();
     }
@@ -54,7 +63,7 @@ export class GeminiService implements TranslationService {
 
     const ai = this.getAIInstance();
     if (!ai) {
-      throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
+      throw new Error("Không tìm thấy API Key. Vui lòng chọn 'Chọn Key từ AI Studio' hoặc nhập API Key thủ công trong phần Cài đặt.");
     }
 
     const systemInstruction = `
@@ -165,7 +174,7 @@ export class GeminiService implements TranslationService {
 
     const ai = this.getAIInstance();
     if (!ai) {
-      throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
+      throw new Error("Không tìm thấy API Key. Vui lòng chọn 'Chọn Key từ AI Studio' hoặc nhập API Key thủ công trong phần Cài đặt.");
     }
 
     const systemInstruction = `
@@ -254,7 +263,7 @@ export class GeminiService implements TranslationService {
     const ai = this.getAIInstance();
 
     if (!ai) {
-      throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
+      throw new Error("Không tìm thấy API Key. Vui lòng chọn 'Chọn Key từ AI Studio' hoặc nhập API Key thủ công trong phần Cài đặt.");
     }
 
     const systemInstruction = `
@@ -347,7 +356,7 @@ export class GeminiService implements TranslationService {
     const ai = this.getAIInstance();
 
     if (!ai) {
-      throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
+      throw new Error("Không tìm thấy API Key. Vui lòng chọn 'Chọn Key từ AI Studio' hoặc nhập API Key thủ công trong phần Cài đặt.");
     }
 
     const systemInstruction = `
