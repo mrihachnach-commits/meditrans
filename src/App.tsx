@@ -10,7 +10,8 @@ import { PDFDocument } from 'pdf-lib';
 import { MedicalDictionary } from './components/MedicalDictionary';
 
 // Use a reliable CDN for the worker that matches the installed version exactly
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// jsDelivr is often faster and more reliable in Vietnam/Asia than unpkg
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 import { 
   Upload, 
@@ -756,9 +757,12 @@ export default function App() {
     translatingPagesRef.current.add(targetPage);
 
     try {
+      const startTime = Date.now();
+      console.log(`[MediTrans] Bắt đầu dịch trang ${targetPage}...`);
+
       // Create a temporary canvas for optimized capture
       const originalCanvas = canvasRef.current;
-      const MAX_DIMENSION = 1600; // Optimized for OCR without being too large
+      const MAX_DIMENSION = 1280; // Optimized for OCR speed while maintaining good quality
       
       let captureCanvas = originalCanvas;
       
@@ -773,10 +777,13 @@ export default function App() {
         if (tempCtx) {
           tempCtx.drawImage(originalCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
           captureCanvas = tempCanvas;
+          console.log(`[MediTrans] Đã tối ưu kích thước ảnh: ${tempCanvas.width}x${tempCanvas.height}`);
         }
       }
 
-      const imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.8); // JPEG is generally faster to encode than WebP
+      const imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.75); // Slightly lower quality for faster upload
+      console.log(`[MediTrans] Đã nén ảnh xong sau ${Date.now() - startTime}ms. Đang gửi yêu cầu tới Gemini...`);
+
       const stream = translationService.current.translateMedicalPageStream({
         imageBuffer,
         pageNumber: targetPage,
@@ -785,9 +792,14 @@ export default function App() {
       
       let fullContent = "";
       let lastUpdateTime = Date.now();
+      let firstChunkReceived = false;
       const UPDATE_INTERVAL = 100; // Update UI every 100ms for smooth streaming without lag
 
       for await (const chunk of stream) {
+        if (!firstChunkReceived) {
+          firstChunkReceived = true;
+          console.log(`[MediTrans] Đã nhận phản hồi đầu tiên sau ${Date.now() - startTime}ms`);
+        }
         fullContent += chunk;
         const now = Date.now();
         if (now - lastUpdateTime > UPDATE_INTERVAL) {
@@ -795,6 +807,8 @@ export default function App() {
           lastUpdateTime = now;
         }
       }
+      
+      console.log(`[MediTrans] Hoàn thành dịch trang ${targetPage} trong ${Date.now() - startTime}ms`);
       
       // Final update to ensure everything is rendered
       setActiveTranslation({ page: targetPage, content: fullContent, status: 'loading' });

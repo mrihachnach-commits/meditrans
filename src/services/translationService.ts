@@ -1,5 +1,6 @@
 export interface TranslationOptions {
   imageBuffer: string;
+  textContent?: string;
   pageNumber: number;
   signal?: AbortSignal;
 }

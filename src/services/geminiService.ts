@@ -4,11 +4,13 @@ import { TranslationService, TranslationOptions } from "./translationService";
 export class GeminiService implements TranslationService {
   private apiKey?: string;
   private modelName: string;
+  private aiInstance: any = null;
+  private lastKey: string | null = null;
 
   constructor(apiKey?: string, modelName: string = "gemini-3-flash-preview") {
     this.modelName = modelName;
     this.apiKey = apiKey;
-    console.log(`GeminiService initialized with model ${modelName}`);
+    console.log(`[MediTrans] GeminiService initialized with model ${modelName}`);
   }
 
   private getAIInstance(): any {
@@ -17,8 +19,16 @@ export class GeminiService implements TranslationService {
     const key = (this.apiKey && this.apiKey.trim() !== "") ? this.apiKey : envKey;
     
     if (key && key.trim() !== "" && key !== "MY_GEMINI_API_KEY") {
+      // Cache the instance if the key hasn't changed
+      if (this.aiInstance && this.lastKey === key) {
+        return this.aiInstance;
+      }
+
       try {
-        return new GoogleGenAI({ apiKey: key });
+        console.log(`[MediTrans] Initializing new GoogleGenAI instance...`);
+        this.aiInstance = new GoogleGenAI({ apiKey: key });
+        this.lastKey = key;
+        return this.aiInstance;
       } catch (e) {
         console.error("Failed to initialize GoogleGenAI:", e);
       }
@@ -96,7 +106,9 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0.1,
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            thinkingConfig: { 
+              thinkingLevel: this.modelName.includes("pro") ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL 
+            },
             safetySettings: [
               { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
               { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -215,7 +227,9 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0.1,
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            thinkingConfig: { 
+              thinkingLevel: this.modelName.includes("pro") ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL 
+            },
             safetySettings: [
               { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
               { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -298,7 +312,9 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0.1,
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            thinkingConfig: { 
+              thinkingLevel: this.modelName.includes("pro") ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL 
+            },
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
@@ -398,7 +414,9 @@ export class GeminiService implements TranslationService {
         config: {
           systemInstruction: systemInstruction,
           temperature: 0.1,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          thinkingConfig: { 
+            thinkingLevel: this.modelName.includes("pro") ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL 
+          },
         }
       });
 
