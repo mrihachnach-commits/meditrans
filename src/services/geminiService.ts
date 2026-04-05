@@ -72,6 +72,11 @@ export class GeminiService implements TranslationService {
       Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown.
       Giữ nguyên cấu trúc xuống dòng, không gộp các mục.
       Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn.
+      
+      LƯU Ý QUAN TRỌNG:
+      - Đối với trang Mục lục (Contents) có nhiều dấu chấm nối (leader dots), hãy dịch nội dung và giữ lại một số lượng dấu chấm vừa đủ (khoảng 3-5 dấu) để phân tách nội dung và số trang. 
+      - TUYỆT ĐỐI KHÔNG lặp lại hàng loạt dấu chấm vô nghĩa.
+      - Nếu gặp các ký tự lặp lại liên tục trong ảnh, hãy xử lý thông minh, không được lặp lại chúng trong kết quả dịch.
     `;
 
     const prompt = `Dịch trang ${pageNumber} sang tiếng Việt.`;
@@ -183,6 +188,11 @@ export class GeminiService implements TranslationService {
       Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown.
       Giữ nguyên cấu trúc xuống dòng, không gộp các mục.
       Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn.
+      
+      LƯU Ý QUAN TRỌNG:
+      - Đối với trang Mục lục (Contents) có nhiều dấu chấm nối (leader dots), hãy dịch nội dung và giữ lại một số lượng dấu chấm vừa đủ (khoảng 3-5 dấu) để phân tách nội dung và số trang. 
+      - TUYỆT ĐỐI KHÔNG lặp lại hàng loạt dấu chấm vô nghĩa.
+      - Nếu gặp các ký tự lặp lại liên tục trong ảnh, hãy xử lý thông minh, không được lặp lại chúng trong kết quả dịch.
     `;
 
     const prompt = `Dịch trang ${pageNumber} sang tiếng Việt.`;
