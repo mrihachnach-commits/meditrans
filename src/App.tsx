@@ -718,6 +718,13 @@ export default function App() {
     const targetPage = pageNumber ?? currentPage;
     if (!canvasRef.current || !translationService.current) return;
 
+    // Safety check: translateCurrentPage uses the global canvasRef, 
+    // so it MUST only be used for the currently visible page.
+    if (targetPage !== currentPage) {
+      console.log(`[MediTrans] Hủy dịch trang ${targetPage} vì không còn là trang hiện tại.`);
+      return;
+    }
+
     // Abort any existing translation
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -733,8 +740,14 @@ export default function App() {
 
     // If still rendering, we don't want to capture a half-rendered or old page
     if (isRenderingRef.current) {
+      console.log(`[MediTrans] Đang render trang ${targetPage}, đợi giây lát...`);
       // Retry after a very short delay
-      setTimeout(() => translateCurrentPage(targetPage, force), 10);
+      setTimeout(() => {
+        // Re-check if we are still on the same page before retrying
+        if (currentPageRef.current === targetPage) {
+          translateCurrentPage(targetPage, force);
+        }
+      }, 50);
       return;
     }
     
@@ -762,6 +775,13 @@ export default function App() {
 
       // Create a temporary canvas for optimized capture
       const originalCanvas = canvasRef.current;
+      
+      // Final safety check: ensure the canvas we're about to capture is still the right one
+      if (targetPage !== currentPageRef.current || isRenderingRef.current) {
+        console.log(`[MediTrans] Hủy capture trang ${targetPage} do thay đổi trạng thái (Page: ${currentPageRef.current}, Rendering: ${isRenderingRef.current})`);
+        return;
+      }
+
       const MAX_DIMENSION = 1024; // Further reduced for faster upload while maintaining OCR quality
       
       let captureCanvas = originalCanvas;
