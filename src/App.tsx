@@ -762,7 +762,7 @@ export default function App() {
 
       // Create a temporary canvas for optimized capture
       const originalCanvas = canvasRef.current;
-      const MAX_DIMENSION = 1280; // Optimized for OCR speed while maintaining good quality
+      const MAX_DIMENSION = 1024; // Further reduced for faster upload while maintaining OCR quality
       
       let captureCanvas = originalCanvas;
       
@@ -781,7 +781,7 @@ export default function App() {
         }
       }
 
-      const imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.75); // Slightly lower quality for faster upload
+      const imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.7); // Lower quality for faster upload
       console.log(`[MediTrans] Đã nén ảnh xong sau ${Date.now() - startTime}ms. Đang gửi yêu cầu tới Gemini...`);
 
       const stream = translationService.current.translateMedicalPageStream({
@@ -959,6 +959,9 @@ export default function App() {
     }
   }, [currentPage, pdfDoc, autoTranslate, translations, numPages, preTranslatePage, isTranslating]);
 
+  const currentEngineRef = useRef<string | null>(null);
+  const currentKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
     let key = engineKeys[selectedEngine];
     
@@ -972,8 +975,15 @@ export default function App() {
       }
     }
 
+    if (currentEngineRef.current === selectedEngine && currentKeyRef.current === key) {
+      return;
+    }
+
+    currentEngineRef.current = selectedEngine;
+    currentKeyRef.current = key;
+
     if (selectedEngine === 'gemini-flash') {
-      translationService.current = new GeminiService(key, "gemini-3-flash-preview");
+      translationService.current = new GeminiService(key, "gemini-3.1-flash-lite-preview");
     } else if (selectedEngine === 'gemini-pro') {
       translationService.current = new GeminiService(key, "gemini-3.1-pro-preview");
     } else if (selectedEngine === 'medical-specialized') {

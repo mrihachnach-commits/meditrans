@@ -68,17 +68,13 @@ export class GeminiService implements TranslationService {
     }
 
     const systemInstruction = `
-      Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
-      Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
-      
-      YÊU CẦU QUAN TRỌNG VỀ ĐỊNH DẠNG:
-      1. Giữ nguyên cấu trúc xuống dòng của bản gốc. Mỗi mục trong Mục lục (Table of Contents) hoặc Danh sách phải nằm trên một dòng riêng biệt.
-      2. Tuyệt đối không gộp các mục con (ví dụ: 6.1, 6.2, 6.3) vào cùng một dòng.
-      3. Giữ nguyên các ký tự phân cách (như dấu chấm ....) và số trang nếu có thể để bảo toàn bố cục.
-      4. Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
+      Bạn là chuyên gia dịch thuật Y khoa.
+      Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown.
+      Giữ nguyên cấu trúc xuống dòng, không gộp các mục.
+      Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn.
     `;
 
-    const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
+    const prompt = `Dịch trang ${pageNumber} sang tiếng Việt.`;
 
     const MAX_RETRIES = 3;
     let retryCount = 0;
@@ -109,12 +105,6 @@ export class GeminiService implements TranslationService {
             thinkingConfig: { 
               thinkingLevel: this.modelName.includes("pro") ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL 
             },
-            safetySettings: [
-              { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-              { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-              { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-            ]
           }
         });
 
@@ -189,17 +179,13 @@ export class GeminiService implements TranslationService {
     }
 
     const systemInstruction = `
-      Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
-      Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
-      
-      YÊU CẦU QUAN TRỌNG VỀ ĐỊNH DẠNG:
-      1. Giữ nguyên cấu trúc xuống dòng của bản gốc. Mỗi mục trong Mục lục (Table of Contents) hoặc Danh sách phải nằm trên một dòng riêng biệt.
-      2. Tuyệt đối không gộp các mục con (ví dụ: 6.1, 6.2, 6.3) vào cùng một dòng.
-      3. Giữ nguyên các ký tự phân cách (như dấu chấm ....) và số trang nếu có thể để bảo toàn bố cục.
-      4. Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
+      Bạn là chuyên gia dịch thuật Y khoa.
+      Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown.
+      Giữ nguyên cấu trúc xuống dòng, không gộp các mục.
+      Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn.
     `;
 
-    const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
+    const prompt = `Dịch trang ${pageNumber} sang tiếng Việt.`;
 
     const MAX_RETRIES = 3;
     let retryCount = 0;
@@ -230,12 +216,6 @@ export class GeminiService implements TranslationService {
             thinkingConfig: { 
               thinkingLevel: this.modelName.includes("pro") ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL 
             },
-            safetySettings: [
-              { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-              { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-              { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-            ]
           }
         });
 
