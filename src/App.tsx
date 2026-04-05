@@ -284,6 +284,7 @@ export default function App() {
   const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
   const [isAddingKey, setIsAddingKey] = useState(false);
   const [newKey, setNewKey] = useState({ name: '', value: '', engine: 'gemini' });
+  const [keyToDelete, setKeyToDelete] = useState<any | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1880,6 +1881,74 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Delete Key Confirmation Modal */}
+      <AnimatePresence>
+        {keyToDelete && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setKeyToDelete(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-8 text-center"
+            >
+              <div className="bg-rose-100 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-rose-100">
+                <Trash2 className="text-rose-600 w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-display font-bold text-slate-800 mb-2">Xác nhận xóa Key?</h3>
+              <p className="text-slate-500 text-sm mb-4">
+                Bạn có chắc chắn muốn xóa key <span className="font-bold text-slate-700">"{keyToDelete.name}"</span>? 
+                Hành động này không thể hoàn tác.
+              </p>
+
+              <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 mb-8 text-left">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Thông tin hạn mức (Free Tier)</span>
+                </div>
+                <ul className="space-y-1.5">
+                  <li className="text-[11px] text-amber-700 leading-relaxed flex justify-between">
+                    <span>• Gemini 1.5 Flash:</span>
+                    <span className="font-bold">1,500 yêu cầu/ngày</span>
+                  </li>
+                  <li className="text-[11px] text-amber-700 leading-relaxed flex justify-between">
+                    <span>• Gemini 1.5 Pro:</span>
+                    <span className="font-bold">50 yêu cầu/ngày</span>
+                  </li>
+                </ul>
+                <p className="mt-2 pt-2 border-t border-amber-200 text-[10px] text-amber-600 italic leading-tight">
+                  * Google hiện không cung cấp API để kiểm tra số lượng yêu cầu còn lại chính xác trong ngày.
+                </p>
+              </div>
+              
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setKeyToDelete(null)}
+                  className="flex-1 px-6 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button 
+                  onClick={() => {
+                    handleDeleteKey(keyToDelete.id);
+                    setKeyToDelete(null);
+                  }}
+                  className="flex-1 px-6 py-3 rounded-xl text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors shadow-lg shadow-rose-100"
+                >
+                  Xác nhận xóa
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Mobile View Toggle & Navigation Floating Bar */}
       {file && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] md:hidden flex flex-col items-center gap-3 w-[90%] max-w-[360px]">
@@ -2160,10 +2229,15 @@ export default function App() {
                                   <p className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]">
                                     {key.value.substring(0, 8)}••••••••{key.value.substring(key.value.length - 4)}
                                   </p>
+                                  {key.lastUsed && (
+                                    <p className="text-[8px] text-slate-300 italic mt-0.5">
+                                      Dùng lần cuối: {new Date(key.lastUsed.toDate()).toLocaleString('vi-VN')}
+                                    </p>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button 
-                                    onClick={() => handleDeleteKey(key.id)}
+                                    onClick={() => setKeyToDelete(key)}
                                     className="p-1.5 hover:bg-rose-50 text-rose-400 hover:text-rose-500 rounded-lg transition-colors"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
