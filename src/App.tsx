@@ -53,8 +53,6 @@ import { MedicalApiService } from './services/medicalApiService';
 import { TranslationEngine, TranslationService } from './services/translationService';
 import { 
   auth, 
-  googleProvider, 
-  signInWithPopup, 
   signOut, 
   onAuthStateChanged, 
   createUserWithEmailAndPassword,
@@ -234,28 +232,6 @@ export default function App() {
       setSelectedKeyId(null);
     }
   }, [user]);
-
-  const handleLogin = async () => {
-    if (isLoggingIn) return;
-    setIsLoggingIn(true);
-    setAuthError(null);
-    try {
-      await signInWithPopup(auth, googleProvider);
-      setShowAuthModal(false);
-      setShowSettings(false);
-    } catch (error: any) {
-      if (error.code === 'auth/cancelled-popup-request') {
-        console.warn("Login popup request was cancelled as another one was already pending.");
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        console.log("User closed the login popup.");
-      } else {
-        console.error("Login failed:", error);
-        setAuthError("Đăng nhập thất bại. Vui lòng thử lại.");
-      }
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1752,24 +1728,6 @@ export default function App() {
                   </button>
                 </form>
 
-                <div className="relative my-8">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-slate-100"></div>
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-white px-4 text-slate-400 font-bold tracking-widest">Hoặc</span>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={handleLogin}
-                  disabled={isLoggingIn}
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3.5 border-2 border-slate-100 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm text-slate-700 active:scale-[0.98]"
-                >
-                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-                  Tiếp tục với Google
-                </button>
-
                 <p className="mt-8 text-center text-xs text-slate-500">
                   {authMode === 'login' ? 'Chưa có tài khoản?' : 'Đã có tài khoản?'}
                   <button 
@@ -1987,7 +1945,7 @@ export default function App() {
                         <ShieldCheck className="w-8 h-8 text-slate-300 mx-auto mb-3" />
                         <p className="text-xs font-bold text-slate-500 mb-4">Đăng nhập để lưu trữ nhiều API Key và tự động chuyển đổi khi hết hạn mức.</p>
                         <button 
-                          onClick={handleLogin}
+                          onClick={() => setShowAuthModal(true)}
                           className="bg-indigo-600 text-white px-6 py-2 rounded-full text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
                         >
                           Đăng nhập ngay
