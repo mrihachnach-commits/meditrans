@@ -219,6 +219,10 @@ export default function App() {
   }, [currentPage, numPages, currentJob]);
 
   const [isTranslating, setIsTranslating] = useState(false);
+  const isTranslatingRef = useRef(false);
+  useEffect(() => {
+    isTranslatingRef.current = isTranslating;
+  }, [isTranslating]);
   const selectedEngine: TranslationEngine = 'gemini-flash';
   
   const [engineKeys, setEngineKeys] = useState<Record<TranslationEngine, string>>(() => {
@@ -704,6 +708,7 @@ export default function App() {
     // Set active translation for smooth streaming without re-rendering the whole list
     setActiveTranslation({ page: targetPage, content: '', status: 'loading' });
     setIsTranslating(true);
+    translatingPagesRef.current.add(targetPage);
 
     try {
       // Create a temporary canvas for optimized capture
@@ -753,7 +758,7 @@ export default function App() {
       setTranslations(prev => ({ ...prev, [targetPage]: finalResult }));
       setActiveTranslation(null);
     } catch (error: any) {
-      if (error.message === "Translation aborted") {
+      if (error.message === "Translation aborted" || error.name === 'AbortError') {
         console.log("Translation aborted by user");
         return;
       }
@@ -861,9 +866,10 @@ export default function App() {
       
       page.cleanup();
     } catch (error: any) {
-      if (error.message !== "Translation aborted") {
-        console.error(`Pre-translation error for page ${pageNum}:`, error);
+      if (error.message === "Translation aborted" || error.name === 'AbortError') {
+        return;
       }
+      console.error(`Pre-translation error for page ${pageNum}:`, error);
     } finally {
       translatingPagesRef.current.delete(pageNum);
       // If it was the current page, reset global translating state
@@ -959,16 +965,16 @@ export default function App() {
   }, [pdfDoc, isAutoFit, currentPage]);
 
   useEffect(() => {
-    if (pdfDoc && autoTranslate && !isRendering && !translations[currentPage]) {
+    if (pdfDoc && autoTranslate && !isRendering && !isTranslating && !translations[currentPage]) {
       const timer = setTimeout(() => {
         // Re-check conditions after delay
-        if (!isRenderingRef.current && !translationsRef.current[currentPage]) {
+        if (!isRenderingRef.current && !isTranslatingRef.current && !translationsRef.current[currentPage]) {
           translateCurrentPage(currentPage);
         }
       }, 100); // Reduced delay from 400ms to 100ms for faster startup
       return () => clearTimeout(timer);
     }
-  }, [currentPage, pdfDoc, autoTranslate, isRendering, translations, translateCurrentPage]);
+  }, [currentPage, pdfDoc, autoTranslate, isRendering, isTranslating, translations, translateCurrentPage]);
 
   useEffect(() => {
     if (pdfDoc) {

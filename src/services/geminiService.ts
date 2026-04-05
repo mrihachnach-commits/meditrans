@@ -60,7 +60,12 @@ export class GeminiService implements TranslationService {
     const systemInstruction = `
       Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
       Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
-      Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
+      
+      YÊU CẦU QUAN TRỌNG VỀ ĐỊNH DẠNG:
+      1. Giữ nguyên cấu trúc xuống dòng của bản gốc. Mỗi mục trong Mục lục (Table of Contents) hoặc Danh sách phải nằm trên một dòng riêng biệt.
+      2. Tuyệt đối không gộp các mục con (ví dụ: 6.1, 6.2, 6.3) vào cùng một dòng.
+      3. Giữ nguyên các ký tự phân cách (như dấu chấm ....) và số trang nếu có thể để bảo toàn bố cục.
+      4. Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
     `;
 
     const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
@@ -121,6 +126,9 @@ export class GeminiService implements TranslationService {
         break;
 
       } catch (error: any) {
+        if (signal?.aborted || error.message === "Translation aborted") {
+          throw new Error("Translation aborted");
+        }
         const isQuotaError = error.message?.toLowerCase().includes("quota") || 
                            error.message?.toLowerCase().includes("429") ||
                            error.message?.toLowerCase().includes("resource_exhausted");
@@ -171,7 +179,12 @@ export class GeminiService implements TranslationService {
     const systemInstruction = `
       Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
       Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
-      Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
+      
+      YÊU CẦU QUAN TRỌNG VỀ ĐỊNH DẠNG:
+      1. Giữ nguyên cấu trúc xuống dòng của bản gốc. Mỗi mục trong Mục lục (Table of Contents) hoặc Danh sách phải nằm trên một dòng riêng biệt.
+      2. Tuyệt đối không gộp các mục con (ví dụ: 6.1, 6.2, 6.3) vào cùng một dòng.
+      3. Giữ nguyên các ký tự phân cách (như dấu chấm ....) và số trang nếu có thể để bảo toàn bố cục.
+      4. Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
     `;
 
     const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
@@ -214,6 +227,9 @@ export class GeminiService implements TranslationService {
 
         return response.text || "Model returned no text.";
       } catch (error: any) {
+        if (signal?.aborted || error.message === "Translation aborted") {
+          throw new Error("Translation aborted");
+        }
         const isQuotaError = error.message?.toLowerCase().includes("quota") || 
                            error.message?.toLowerCase().includes("429") ||
                            error.message?.toLowerCase().includes("resource_exhausted");
