@@ -86,7 +86,7 @@ export class GeminiService implements TranslationService {
                 { text: prompt },
                 {
                   inlineData: {
-                    mimeType: "image/webp",
+                    mimeType: "image/jpeg",
                     data: imageBuffer.split(",")[1],
                   },
                 },
@@ -205,7 +205,7 @@ export class GeminiService implements TranslationService {
                 { text: prompt },
                 {
                   inlineData: {
-                    mimeType: "image/webp",
+                    mimeType: "image/jpeg",
                     data: imageBuffer.split(",")[1],
                   },
                 },
@@ -388,7 +388,7 @@ export class GeminiService implements TranslationService {
               { text: prompt },
               {
                 inlineData: {
-                  mimeType: "image/webp",
+                  mimeType: "image/jpeg",
                   data: imageBuffer.split(",")[1],
                 },
               },
