@@ -867,6 +867,21 @@ export default function App() {
     }
   }, [selectedEngine, engineKeys, user, selectedKeyId, userKeys]);
 
+  // Handle Focus Mode (FullScreen) transitions
+  useEffect(() => {
+    if (file) {
+      // Set auto-fit to true when toggling focus mode to ensure it fills the space
+      setIsAutoFit(true);
+      
+      // Small delay to allow layout transitions to complete before measuring
+      const timer = setTimeout(() => {
+        fitToWidth();
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [isFullScreen, file]);
+
+  // Handle PDF document load
   useEffect(() => {
     if (pdfDoc) {
       fitToWidth();
@@ -1410,16 +1425,6 @@ export default function App() {
                       <Maximize className="w-3 h-3" />
                     </button>
                   </div>
-
-                  <div className="h-4 w-px bg-slate-200" />
-
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 px-2 py-1 hover:bg-slate-50 rounded-md cursor-pointer transition-all text-slate-500 group relative"
-                  >
-                    <RefreshCcw className="w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-500" />
-                    <span className="text-[10px] font-black uppercase tracking-tighter">Tải file khác</span>
-                  </button>
                 </div>
               </div>
               <div 
