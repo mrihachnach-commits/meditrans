@@ -29,11 +29,11 @@ export class MedicalApiService implements TranslationService {
     const mockResponse = [
       "## [SPECIALIZED MEDICAL TRANSLATION]\n\n",
       "Đây là bản dịch từ hệ thống chuyên dụng y khoa.\n\n",
-      "Hệ thống đang phân tích các thuật ngữ chuyên ngành Nhãn khoa...\n\n",
+      "Hệ thống đang phân tích các thuật ngữ chuyên ngành y khoa...\n\n",
       "**Kết quả trích xuất:**\n",
-      "- Võng mạc (Retina): Ổn định\n",
-      "- Áp lực nội nhãn (IOP): 15 mmHg\n",
-      "- Thủy tinh thể: Trong suốt\n\n",
+      "- Nhịp tim (Heart Rate): 75 bpm\n",
+      "- Huyết áp (Blood Pressure): 120/80 mmHg\n",
+      "- Nhiệt độ: 37°C\n\n",
       "*(Lưu ý: Đây là bản dịch mô phỏng cho mục đích minh họa tính năng chọn API)*"
     ];
 

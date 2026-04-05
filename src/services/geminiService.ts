@@ -58,21 +58,12 @@ export class GeminiService implements TranslationService {
     }
 
     const systemInstruction = `
-      Bạn là một chuyên gia dịch thuật y khoa cao cấp, chuyên ngành Nhãn khoa (Ophthalmology).
-      Nhiệm vụ của bạn là dịch hình ảnh trang tài liệu y khoa được cung cấp sang tiếng Việt.
-      
-      YÊU CẦU BẮT BUỘC:
-      1. Dịch SÁT NGHĨA, ĐẦY ĐỦ và CHÍNH XÁC toàn bộ văn bản trong hình ảnh. Không được bỏ sót bất kỳ đoạn văn, tiêu đề hay chú thích nào.
-      2. Sử dụng thuật ngữ y khoa Nhãn khoa chuẩn Việt Nam (ví dụ: "Retina" -> "Võng mạc", "Glaucoma" -> "Cườm nước/Glôcôm", "Cataract" -> "Đục thủy tinh thể").
-      3. Giữ nguyên định dạng Markdown:
-         - Sử dụng các cấp độ tiêu đề (#, ##, ###) tương ứng với tài liệu gốc.
-         - Giữ nguyên cấu trúc bảng (tables), danh sách (lists), và các đoạn văn.
-         - Dịch chú thích hình ảnh (ví dụ: "Figure 1.1" -> "Hình 1.1").
-      4. KHÔNG thêm lời dẫn, không giải thích, không nhận xét. Chỉ trả về nội dung đã được dịch.
-      5. Nếu có các ký hiệu đặc biệt hoặc công thức, hãy giữ nguyên hoặc trình bày lại một cách dễ hiểu nhất trong Markdown.
+      Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
+      Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
+      Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
     `;
 
-    const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa chuyên ngành Nhãn khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
+    const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
 
     const MAX_RETRIES = 3;
     let retryCount = 0;
@@ -90,7 +81,7 @@ export class GeminiService implements TranslationService {
                 { text: prompt },
                 {
                   inlineData: {
-                    mimeType: "image/jpeg",
+                    mimeType: "image/webp",
                     data: imageBuffer.split(",")[1],
                   },
                 },
@@ -100,6 +91,7 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0.1,
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             safetySettings: [
               { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
               { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -177,21 +169,12 @@ export class GeminiService implements TranslationService {
     }
 
     const systemInstruction = `
-      Bạn là một chuyên gia dịch thuật y khoa cao cấp, chuyên ngành Nhãn khoa (Ophthalmology).
-      Nhiệm vụ của bạn là dịch hình ảnh trang tài liệu y khoa được cung cấp sang tiếng Việt.
-      
-      YÊU CẦU BẮT BUỘC:
-      1. Dịch SÁT NGHĨA, ĐẦY ĐỦ và CHÍNH XÁC toàn bộ văn bản trong hình ảnh. Không được bỏ sót bất kỳ đoạn văn, tiêu đề hay chú thích nào.
-      2. Sử dụng thuật ngữ y khoa Nhãn khoa chuẩn Việt Nam (ví dụ: "Retina" -> "Võng mạc", "Glaucoma" -> "Cườm nước/Glôcôm", "Cataract" -> "Đục thủy tinh thể").
-      3. Giữ nguyên định dạng Markdown:
-         - Sử dụng các cấp độ tiêu đề (#, ##, ###) tương ứng với tài liệu gốc.
-         - Giữ nguyên cấu trúc bảng (tables), danh sách (lists), và các đoạn văn.
-         - Dịch chú thích hình ảnh (ví dụ: "Figure 1.1" -> "Hình 1.1").
-      4. KHÔNG thêm lời dẫn, không giải thích, không nhận xét. Chỉ trả về nội dung đã được dịch.
-      5. Nếu có các ký hiệu đặc biệt hoặc công thức, hãy giữ nguyên hoặc trình bày lại một cách dễ hiểu nhất trong Markdown.
+      Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
+      Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
+      Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
     `;
 
-    const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa chuyên ngành Nhãn khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
+    const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
 
     const MAX_RETRIES = 3;
     let retryCount = 0;
@@ -209,7 +192,7 @@ export class GeminiService implements TranslationService {
                 { text: prompt },
                 {
                   inlineData: {
-                    mimeType: "image/jpeg",
+                    mimeType: "image/webp",
                     data: imageBuffer.split(",")[1],
                   },
                 },
@@ -219,6 +202,7 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0.1,
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             safetySettings: [
               { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
               { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -279,7 +263,7 @@ export class GeminiService implements TranslationService {
       
       YÊU CẦU:
       1. Ngôn ngữ: Tiếng Việt.
-      2. Nếu là thuật ngữ y khoa (đặc biệt là Nhãn khoa), hãy cung cấp định nghĩa chuyên môn sâu.
+      2. Nếu là thuật ngữ y khoa, hãy cung cấp định nghĩa chuyên môn sâu.
       3. Nếu là từ ngữ thông thường, hãy dịch nghĩa và giải thích cách dùng trong ngữ cảnh y khoa nếu có.
       4. Cung cấp các từ đồng nghĩa và thuật ngữ liên quan để người dùng hiểu rõ hơn.
       5. Tuyệt đối không được bịa đặt thông tin.
@@ -298,6 +282,7 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0.1,
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
@@ -366,7 +351,7 @@ export class GeminiService implements TranslationService {
     }
 
     const systemInstruction = `
-      Bạn là một chuyên gia OCR (Nhận diện ký tự quang học) y khoa chuyên ngành Nhãn khoa.
+      Bạn là một chuyên gia OCR (Nhận diện ký tự quang học) y khoa.
       Nhiệm vụ của bạn là trích xuất CHÍNH XÁC văn bản từ hình ảnh vùng được chọn.
       
       YÊU CẦU:
@@ -387,7 +372,7 @@ export class GeminiService implements TranslationService {
               { text: prompt },
               {
                 inlineData: {
-                  mimeType: "image/jpeg",
+                  mimeType: "image/webp",
                   data: imageBuffer.split(",")[1],
                 },
               },
@@ -397,6 +382,7 @@ export class GeminiService implements TranslationService {
         config: {
           systemInstruction: systemInstruction,
           temperature: 0.1,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         }
       });
 

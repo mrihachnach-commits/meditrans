@@ -627,7 +627,7 @@ export default function App() {
     // If still rendering, we don't want to capture a half-rendered or old page
     if (isRenderingRef.current) {
       // Retry after a short delay
-      setTimeout(() => translateCurrentPage(targetPage, force), 500);
+      setTimeout(() => translateCurrentPage(targetPage, force), 200);
       return;
     }
     
@@ -669,7 +669,7 @@ export default function App() {
         }
       }
 
-      const imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.75); // Slightly lower quality for faster upload
+      const imageBuffer = captureCanvas.toDataURL('image/webp', 0.8); // Use WebP for smaller payload and faster upload
       const stream = translationService.current.translateMedicalPageStream({
         imageBuffer,
         pageNumber: targetPage,
@@ -759,7 +759,7 @@ export default function App() {
           return;
         }
 
-        const imageBuffer = canvas.toDataURL('image/jpeg', 0.75);
+        const imageBuffer = canvas.toDataURL('image/webp', 0.8);
         const stream = translationService.current.translateMedicalPageStream({
           imageBuffer,
           pageNumber: pageNum,
@@ -826,7 +826,7 @@ export default function App() {
           const controller = new AbortController();
           const timer = setTimeout(() => {
             preTranslatePage(pageNum, controller.signal);
-          }, 1500); // Increased delay to prioritize current page and user actions
+          }, 800); // Reduced delay for more aggressive pre-translation
           
           return () => {
             clearTimeout(timer);
