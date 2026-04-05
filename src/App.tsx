@@ -46,7 +46,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, PageBreak, AlignmentType } from 'docx';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import { saveAs } from 'file-saver';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -188,7 +188,6 @@ export default function App() {
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [currentJob, setCurrentJob] = useState(1);
   const PAGES_PER_JOB = 100;
   const totalJobs = Math.ceil(numPages / PAGES_PER_JOB);
@@ -220,6 +219,10 @@ export default function App() {
   }, [currentPage, numPages, currentJob]);
 
   const [isTranslating, setIsTranslating] = useState(false);
+  const isTranslatingRef = useRef(false);
+  useEffect(() => {
+    isTranslatingRef.current = isTranslating;
+  }, [isTranslating]);
   const selectedEngine: TranslationEngine = 'gemini-flash';
   
   const [engineKeys, setEngineKeys] = useState<Record<TranslationEngine, string>>(() => {
@@ -234,7 +237,7 @@ export default function App() {
     
     // Initial defaults
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    const defaultKey = (envKey && envKey.trim() !== "" && envKey !== "MY_GEMINI_API_KEY") ? envKey : '';
+    const defaultKey = (envKey && envKey.trim() !== "") ? envKey : '';
     
     return {
       'gemini-flash': defaultKey,
@@ -243,6 +246,8 @@ export default function App() {
     };
   });
   const [showSettings, setShowSettings] = useState(false);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [selectedPagesToDownload, setSelectedPagesToDownload] = useState<number[]>([]);
   const [hasEnvKey, setHasEnvKey] = useState(false);
 
   useEffect(() => {
@@ -257,7 +262,7 @@ export default function App() {
 
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [mobileViewMode, setMobileViewMode] = useState<'pdf' | 'translation'>('pdf');
-  const [autoTranslate, setAutoTranslate] = useState(false);
+  const [autoTranslate, setAutoTranslate] = useState(true);
   const [zoom, setZoom] = useState(0.82); // Default to 82% as requested
   const [isAutoFit, setIsAutoFit] = useState(true);
   
@@ -414,43 +419,39 @@ export default function App() {
     }
   };
 
-  const handleDownload = async (pageNums?: number[]) => {
-    const pagesToDownload = pageNums || [currentPage];
-    const docsToCombine = pagesToDownload
-      .sort((a, b) => a - b)
-      .map(p => ({ page: p, content: translations[p]?.content }))
-      .filter(p => p.content);
-
-    if (docsToCombine.length === 0) return;
+  const handleDownload = async (pagesToDownload?: number[]) => {
+    const pages = pagesToDownload || [currentPage];
+    const availablePages = pages.filter(p => translations[p]?.status === 'success');
+    
+    if (availablePages.length === 0) return;
 
     try {
       const allChildren: Paragraph[] = [];
       
-      docsToCombine.forEach((item, index) => {
-        // Add a header for the page if downloading multiple
-        if (docsToCombine.length > 1) {
-          allChildren.push(new Paragraph({
-            heading: HeadingLevel.HEADING_1,
-            alignment: AlignmentType.CENTER,
-            spacing: { before: index === 0 ? 0 : 400, after: 200 },
-            children: [
-              new TextRun({ 
-                text: `Trang ${item.page}`, 
-                bold: true, 
-                color: "4F46E5",
-                size: 32
-              })
-            ],
-          }));
-        }
+      for (const pageNum of availablePages) {
+        const content = translations[pageNum]?.content;
+        if (!content) continue;
 
-        const lines = item.content!.split('\n');
-        lines.forEach(line => {
+        // Add page header
+        allChildren.push(new Paragraph({
+          heading: HeadingLevel.HEADING_1,
+          alignment: "center",
+          spacing: { before: 400, after: 200 },
+          children: [
+            new TextRun({
+              text: `Trang ${pageNum}`,
+              bold: true,
+              color: "4F46E5",
+              size: 32,
+              font: "Times New Roman"
+            })
+          ]
+        }));
+
+        const lines = content.split('\n');
+        const pageParagraphs = lines.map(line => {
           let text = line.trim();
-          if (!text) {
-            allChildren.push(new Paragraph({ spacing: { after: 120 }, children: [new TextRun("")] }));
-            return;
-          }
+          if (!text) return new Paragraph({ spacing: { after: 120 }, children: [new TextRun("")] });
 
           let isHeading = false;
           let headingLevel: any = undefined;
@@ -469,37 +470,36 @@ export default function App() {
             headingLevel = HeadingLevel.HEADING_1;
           }
 
-          // Handle bullet points
           let isBullet = false;
           if (text.startsWith('- ') || text.startsWith('* ')) {
             text = text.substring(2);
             isBullet = true;
           }
 
-          allChildren.push(new Paragraph({
+          return new Paragraph({
             heading: isHeading ? headingLevel : undefined,
             bullet: isBullet ? { level: 0 } : undefined,
-            spacing: {
-              after: 120,
-            },
+            spacing: { after: 120 },
             children: [
               new TextRun({
                 text: text,
-                size: isHeading ? 28 : 24, // Slightly larger for headings
+                size: isHeading ? 28 : 24,
                 font: "Times New Roman",
                 bold: isHeading
               })
             ]
-          }));
+          });
         });
 
-        // Add page break between pages except the last one
-        if (index < docsToCombine.length - 1) {
+        allChildren.push(...pageParagraphs);
+        
+        // Add page break if not the last page
+        if (pageNum !== availablePages[availablePages.length - 1]) {
           allChildren.push(new Paragraph({
-            children: [new PageBreak()],
+            children: [new TextRun({ text: "", break: 1 })]
           }));
         }
-      });
+      }
 
       const doc = new Document({
         sections: [{
@@ -509,16 +509,16 @@ export default function App() {
       });
 
       const blob = await Packer.toBlob(doc);
-      const fileName = docsToCombine.length === 1 
-        ? `MediTrans_Trang_${docsToCombine[0].page}.docx`
-        : `MediTrans_BanDich_TongHop_${docsToCombine.length}_trang.docx`;
+      const fileName = availablePages.length === 1 
+        ? `MediTrans_Trang_${availablePages[0]}.docx` 
+        : `MediTrans_Tong_Hop_${availablePages.length}_Trang.docx`;
       saveAs(blob, fileName);
     } catch (error) {
       console.error("Error generating docx:", error);
-      // Fallback to markdown if docx fails
-      const combinedMarkdown = docsToCombine.map(d => `# Trang ${d.page}\n\n${d.content}`).join('\n\n---\n\n');
-      const blob = new Blob([combinedMarkdown], { type: 'text/markdown' });
-      saveAs(blob, `MediTrans_BanDich_TongHop.md`);
+      // Fallback to markdown if docx fails (just for the first page if multiple)
+      const firstPageContent = translations[availablePages[0]]?.content || "";
+      const blob = new Blob([firstPageContent], { type: 'text/markdown' });
+      saveAs(blob, `MediTrans_Trang_${availablePages[0]}.md`);
     }
   };
 
@@ -548,6 +548,11 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const renderTaskRef = useRef<any>(null);
   const translationService = useRef<TranslationService | null>(null);
+
+  // Pre-load PDF worker
+  useEffect(() => {
+    console.log(`[MediTrans AI] Pre-loading PDF worker v${pdfjs.version}...`);
+  }, []);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -628,24 +633,30 @@ export default function App() {
         renderTaskRef.current = renderTask;
         await renderTask.promise;
         
-        // Render text layer
+        // Signal that visual rendering is done so translation can start immediately
+        setIsRendering(false);
+        isRenderingRef.current = false;
+        
+        // Render text layer in the background
         const textContent = await page.getTextContent();
         const textLayerDiv = textLayerRef.current;
-        textLayerDiv.innerHTML = '';
-        
-        // Use the same scale as the visual representation
-        const textViewport = page.getViewport({ scale: zoom });
-        textLayerDiv.style.width = `${textViewport.width}px`;
-        textLayerDiv.style.height = `${textViewport.height}px`;
-        textLayerDiv.style.left = '0';
-        textLayerDiv.style.top = '0';
-        
-        const textLayer = new pdfjs.TextLayer({
-          textContentSource: textContent,
-          container: textLayerDiv,
-          viewport: textViewport,
-        });
-        await textLayer.render();
+        if (textLayerDiv) {
+          textLayerDiv.innerHTML = '';
+          
+          // Use the same scale as the visual representation
+          const textViewport = page.getViewport({ scale: zoom });
+          textLayerDiv.style.width = `${textViewport.width}px`;
+          textLayerDiv.style.height = `${textViewport.height}px`;
+          textLayerDiv.style.left = '0';
+          textLayerDiv.style.top = '0';
+          
+          const textLayer = new pdfjs.TextLayer({
+            textContentSource: textContent,
+            container: textLayerDiv,
+            viewport: textViewport,
+          });
+          await textLayer.render();
+        }
 
         // Crucial for memory: cleanup page resources
         page.cleanup();
@@ -654,7 +665,6 @@ export default function App() {
       if (error.name !== 'RenderingCancelledException') {
         console.error("Error rendering page:", error);
       }
-    } finally {
       setIsRendering(false);
       isRenderingRef.current = false;
     }
@@ -722,8 +732,8 @@ export default function App() {
 
     // If still rendering, we don't want to capture a half-rendered or old page
     if (isRenderingRef.current) {
-      // Retry after a short delay
-      setTimeout(() => translateCurrentPage(targetPage, force), 200);
+      // Retry after a very short delay
+      setTimeout(() => translateCurrentPage(targetPage, force), 10);
       return;
     }
     
@@ -743,6 +753,7 @@ export default function App() {
     // Set active translation for smooth streaming without re-rendering the whole list
     setActiveTranslation({ page: targetPage, content: '', status: 'loading' });
     setIsTranslating(true);
+    translatingPagesRef.current.add(targetPage);
 
     try {
       // Create a temporary canvas for optimized capture
@@ -765,7 +776,7 @@ export default function App() {
         }
       }
 
-      const imageBuffer = captureCanvas.toDataURL('image/webp', 0.8); // Use WebP for smaller payload and faster upload
+      const imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.8); // JPEG is generally faster to encode than WebP
       const stream = translationService.current.translateMedicalPageStream({
         imageBuffer,
         pageNumber: targetPage,
@@ -792,7 +803,7 @@ export default function App() {
       setTranslations(prev => ({ ...prev, [targetPage]: finalResult }));
       setActiveTranslation(null);
     } catch (error: any) {
-      if (error.message === "Translation aborted") {
+      if (error.message === "Translation aborted" || error.name === 'AbortError') {
         console.log("Translation aborted by user");
         return;
       }
@@ -855,7 +866,7 @@ export default function App() {
           return;
         }
 
-        const imageBuffer = canvas.toDataURL('image/webp', 0.8);
+        const imageBuffer = canvas.toDataURL('image/jpeg', 0.8);
         const stream = translationService.current.translateMedicalPageStream({
           imageBuffer,
           pageNumber: pageNum,
@@ -900,9 +911,10 @@ export default function App() {
       
       page.cleanup();
     } catch (error: any) {
-      if (error.message !== "Translation aborted") {
-        console.error(`Pre-translation error for page ${pageNum}:`, error);
+      if (error.message === "Translation aborted" || error.name === 'AbortError') {
+        return;
       }
+      console.error(`Pre-translation error for page ${pageNum}:`, error);
     } finally {
       translatingPagesRef.current.delete(pageNum);
       // If it was the current page, reset global translating state
@@ -998,16 +1010,16 @@ export default function App() {
   }, [pdfDoc, isAutoFit, currentPage]);
 
   useEffect(() => {
-    if (pdfDoc && autoTranslate && !isRendering && !translations[currentPage]) {
+    if (pdfDoc && autoTranslate && !isRendering && !isTranslating && !translations[currentPage]) {
       const timer = setTimeout(() => {
         // Re-check conditions after delay
-        if (!isRenderingRef.current && !translationsRef.current[currentPage]) {
+        if (!isRenderingRef.current && !isTranslatingRef.current && !translationsRef.current[currentPage]) {
           translateCurrentPage(currentPage);
         }
-      }, 400); // Reduced delay to prioritize current page
+      }, 20); // Reduced delay from 100ms to 20ms for near-instant startup
       return () => clearTimeout(timer);
     }
-  }, [currentPage, pdfDoc, autoTranslate, isRendering, translations, translateCurrentPage]);
+  }, [currentPage, pdfDoc, autoTranslate, isRendering, isTranslating, translations, translateCurrentPage]);
 
   useEffect(() => {
     if (pdfDoc) {
@@ -1669,38 +1681,20 @@ export default function App() {
                 </div>
                 
                 <div className="flex items-center gap-2 min-w-max ml-4">
-                  {translations[currentPage]?.status === 'success' && (
-                    <div className="flex items-center gap-1.5">
-                      <button 
-                        onClick={() => {
-                          const newSelected = new Set(selectedPages);
-                          if (newSelected.has(currentPage)) {
-                            newSelected.delete(currentPage);
-                          } else {
-                            newSelected.add(currentPage);
-                          }
-                          setSelectedPages(newSelected);
-                        }}
-                        className={cn(
-                          "flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all border",
-                          selectedPages.has(currentPage)
-                            ? "bg-indigo-600 text-white border-indigo-600"
-                            : "bg-white text-slate-400 border-slate-200 hover:border-indigo-200 hover:text-indigo-500"
-                        )}
-                        title={selectedPages.has(currentPage) ? "Bỏ chọn trang này" : "Chọn trang này để tải tổng hợp"}
-                      >
-                        <CheckCircle2 className={cn("w-3.5 h-3.5", selectedPages.has(currentPage) ? "text-white" : "text-slate-300")} />
-                        {selectedPages.has(currentPage) ? 'Đã chọn' : 'Chọn tải'}
-                      </button>
-
-                      <button 
-                        onClick={() => handleDownload()}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 uppercase tracking-tighter transition-all border border-indigo-100"
-                      >
-                        <Download className="w-3.5 h-3.5" /> Tải xuống
-                      </button>
-                    </div>
-                  )}
+                  <button 
+                    onClick={() => {
+                      // Pre-select current page if it's translated
+                      if (translations[currentPage]?.status === 'success') {
+                        setSelectedPagesToDownload([currentPage]);
+                      } else {
+                        setSelectedPagesToDownload([]);
+                      }
+                      setShowDownloadModal(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 uppercase tracking-tighter transition-all border border-indigo-100"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Tải xuống
+                  </button>
                   <button 
                     onClick={() => translateCurrentPage(currentPage, true)}
                     disabled={isTranslating || isRendering}
@@ -2402,47 +2396,126 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Batch Download Floating Bar */}
+      {/* Download Modal */}
       <AnimatePresence>
-        {selectedPages.size > 0 && (
-          <motion.div 
-            initial={{ y: 100, opacity: 0, x: '-50%' }}
-            animate={{ y: 0, opacity: 1, x: '-50%' }}
-            exit={{ y: 100, opacity: 0, x: '-50%' }}
-            className="fixed bottom-8 md:bottom-12 left-1/2 z-[70] bg-indigo-600 text-white px-4 md:px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 md:gap-4 border border-indigo-500 w-[90%] md:w-auto"
-          >
-            <div className="flex flex-col shrink-0">
-              <span className="text-[8px] md:text-[10px] font-black uppercase tracking-widest opacity-80">Đã chọn</span>
-              <span className="text-xs md:text-sm font-bold">{selectedPages.size} trang</span>
-            </div>
-            <div className="h-8 w-px bg-indigo-500/50 shrink-0" />
-            <div className="flex items-center gap-2 flex-1 justify-end">
-              <button 
-                onClick={() => setSelectedPages(new Set())}
-                className="px-2 md:px-3 py-1.5 hover:bg-indigo-700 rounded-xl text-[9px] md:text-[10px] font-bold transition-colors whitespace-nowrap"
-              >
-                Hủy chọn
-              </button>
-              <button 
-                onClick={() => {
-                  const translatedPages = Object.keys(translations)
-                    .map(Number)
-                    .filter(p => translations[p]?.status === 'success');
-                  setSelectedPages(new Set(translatedPages));
-                }}
-                className="hidden md:block px-3 py-1.5 hover:bg-indigo-700 rounded-xl text-[10px] font-bold transition-colors whitespace-nowrap"
-              >
-                Chọn tất cả đã dịch
-              </button>
-              <button 
-                onClick={() => handleDownload(Array.from(selectedPages))}
-                className="bg-white text-indigo-600 px-3 md:px-4 py-2 rounded-xl text-[10px] md:text-xs font-black uppercase tracking-tight hover:bg-indigo-50 transition-all shadow-lg active:scale-95 flex items-center gap-1.5 md:gap-2 whitespace-nowrap"
-              >
-                <Download className="w-3.5 h-3.5 md:w-4 h-4" />
-                Tải file Word chung
-              </button>
-            </div>
-          </motion.div>
+        {showDownloadModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowDownloadModal(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-8">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-indigo-100 p-2 rounded-xl">
+                      <Download className="text-indigo-600 w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-display font-bold text-slate-800">Tải xuống bản dịch</h3>
+                      <p className="text-xs text-slate-400 font-medium">Chọn các trang bạn muốn xuất ra file Word (.docx)</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setShowDownloadModal(false)}
+                    className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                  >
+                    <ChevronLeft className="w-5 h-5 text-slate-400 rotate-180" />
+                  </button>
+                </div>
+
+                <div className="mb-4 flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => {
+                        const allTranslated = Object.keys(translations)
+                          .filter(p => translations[Number(p)]?.status === 'success')
+                          .map(Number);
+                        setSelectedPagesToDownload(allTranslated);
+                      }}
+                      className="text-[10px] font-black text-indigo-600 hover:text-indigo-700 uppercase tracking-widest"
+                    >
+                      Chọn tất cả đã dịch
+                    </button>
+                    <button 
+                      onClick={() => setSelectedPagesToDownload([])}
+                      className="text-[10px] font-black text-slate-400 hover:text-slate-500 uppercase tracking-widest"
+                    >
+                      Bỏ chọn tất cả
+                    </button>
+                  </div>
+                  <div className="text-[10px] font-bold text-slate-500">
+                    Đã chọn: <span className="text-indigo-600">{selectedPagesToDownload.length}</span> trang
+                  </div>
+                </div>
+
+                <div className="max-h-[400px] overflow-y-auto pr-2 grid grid-cols-5 sm:grid-cols-8 gap-2 no-scrollbar p-1">
+                  {Array.from({ length: numPages }, (_, i) => i + 1).map(pageNum => {
+                    const isTranslated = translations[pageNum]?.status === 'success';
+                    const isSelected = selectedPagesToDownload.includes(pageNum);
+                    
+                    return (
+                      <button
+                        key={pageNum}
+                        disabled={!isTranslated}
+                        onClick={() => {
+                          if (isSelected) {
+                            setSelectedPagesToDownload(prev => prev.filter(p => p !== pageNum));
+                          } else {
+                            setSelectedPagesToDownload(prev => [...prev, pageNum].sort((a, b) => a - b));
+                          }
+                        }}
+                        className={cn(
+                          "aspect-square rounded-xl border flex flex-col items-center justify-center transition-all relative group",
+                          isSelected 
+                            ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100 scale-105 z-10" 
+                            : isTranslated
+                              ? "bg-white border-indigo-100 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/30"
+                              : "bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed opacity-60"
+                        )}
+                      >
+                        <span className="text-xs font-black">{pageNum}</span>
+                        {isTranslated && !isSelected && (
+                          <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                        )}
+                        {isSelected && (
+                          <CheckCircle2 className="w-3 h-3 absolute -top-1 -right-1 bg-white text-indigo-600 rounded-full" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-8 flex gap-3">
+                  <button 
+                    onClick={() => setShowDownloadModal(false)}
+                    className="flex-1 px-6 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                  >
+                    Hủy
+                  </button>
+                  <button 
+                    disabled={selectedPagesToDownload.length === 0}
+                    onClick={() => {
+                      handleDownload(selectedPagesToDownload);
+                      setShowDownloadModal(false);
+                    }}
+                    className="flex-1 px-6 py-3 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Tải file Word ({selectedPagesToDownload.length} trang)
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

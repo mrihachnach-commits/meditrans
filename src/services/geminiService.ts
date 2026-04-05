@@ -14,13 +14,8 @@ export class GeminiService implements TranslationService {
   private getAIInstance(): any {
     // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    let key = (this.apiKey && this.apiKey.trim() !== "") ? this.apiKey : envKey;
+    const key = (this.apiKey && this.apiKey.trim() !== "") ? this.apiKey : envKey;
     
-    // Fallback to global if process.env was shadowed/static or empty
-    if (!key || key === "MY_GEMINI_API_KEY" || key.trim() === "") {
-        key = (window as any).process?.env?.GEMINI_API_KEY || (window as any).process?.env?.API_KEY;
-    }
-
     if (key && key.trim() !== "" && key !== "MY_GEMINI_API_KEY") {
       try {
         return new GoogleGenAI({ apiKey: key });
@@ -37,10 +32,6 @@ export class GeminiService implements TranslationService {
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
     if (envKey && envKey.trim() !== "" && envKey !== "MY_GEMINI_API_KEY") return true;
     
-    // Check dynamic process.env
-    const dynamicKey = (window as any).process?.env?.GEMINI_API_KEY || (window as any).process?.env?.API_KEY;
-    if (dynamicKey && dynamicKey.trim() !== "" && dynamicKey !== "MY_GEMINI_API_KEY") return true;
-
     if (typeof window !== 'undefined' && (window as any).aistudio?.hasSelectedApiKey) {
       return await (window as any).aistudio.hasSelectedApiKey();
     }
@@ -63,13 +54,18 @@ export class GeminiService implements TranslationService {
 
     const ai = this.getAIInstance();
     if (!ai) {
-      throw new Error("Không tìm thấy API Key. Vui lòng chọn 'Chọn Key từ AI Studio' hoặc nhập API Key thủ công trong phần Cài đặt.");
+      throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
     }
 
     const systemInstruction = `
       Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
       Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
-      Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
+      
+      YÊU CẦU QUAN TRỌNG VỀ ĐỊNH DẠNG:
+      1. Giữ nguyên cấu trúc xuống dòng của bản gốc. Mỗi mục trong Mục lục (Table of Contents) hoặc Danh sách phải nằm trên một dòng riêng biệt.
+      2. Tuyệt đối không gộp các mục con (ví dụ: 6.1, 6.2, 6.3) vào cùng một dòng.
+      3. Giữ nguyên các ký tự phân cách (như dấu chấm ....) và số trang nếu có thể để bảo toàn bố cục.
+      4. Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
     `;
 
     const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
@@ -90,7 +86,7 @@ export class GeminiService implements TranslationService {
                 { text: prompt },
                 {
                   inlineData: {
-                    mimeType: "image/webp",
+                    mimeType: "image/jpeg",
                     data: imageBuffer.split(",")[1],
                   },
                 },
@@ -130,6 +126,9 @@ export class GeminiService implements TranslationService {
         break;
 
       } catch (error: any) {
+        if (signal?.aborted || error.message === "Translation aborted") {
+          throw new Error("Translation aborted");
+        }
         const isQuotaError = error.message?.toLowerCase().includes("quota") || 
                            error.message?.toLowerCase().includes("429") ||
                            error.message?.toLowerCase().includes("resource_exhausted");
@@ -174,13 +173,18 @@ export class GeminiService implements TranslationService {
 
     const ai = this.getAIInstance();
     if (!ai) {
-      throw new Error("Không tìm thấy API Key. Vui lòng chọn 'Chọn Key từ AI Studio' hoặc nhập API Key thủ công trong phần Cài đặt.");
+      throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
     }
 
     const systemInstruction = `
       Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
       Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
-      Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
+      
+      YÊU CẦU QUAN TRỌNG VỀ ĐỊNH DẠNG:
+      1. Giữ nguyên cấu trúc xuống dòng của bản gốc. Mỗi mục trong Mục lục (Table of Contents) hoặc Danh sách phải nằm trên một dòng riêng biệt.
+      2. Tuyệt đối không gộp các mục con (ví dụ: 6.1, 6.2, 6.3) vào cùng một dòng.
+      3. Giữ nguyên các ký tự phân cách (như dấu chấm ....) và số trang nếu có thể để bảo toàn bố cục.
+      4. Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
     `;
 
     const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
@@ -201,7 +205,7 @@ export class GeminiService implements TranslationService {
                 { text: prompt },
                 {
                   inlineData: {
-                    mimeType: "image/webp",
+                    mimeType: "image/jpeg",
                     data: imageBuffer.split(",")[1],
                   },
                 },
@@ -223,6 +227,9 @@ export class GeminiService implements TranslationService {
 
         return response.text || "Model returned no text.";
       } catch (error: any) {
+        if (signal?.aborted || error.message === "Translation aborted") {
+          throw new Error("Translation aborted");
+        }
         const isQuotaError = error.message?.toLowerCase().includes("quota") || 
                            error.message?.toLowerCase().includes("429") ||
                            error.message?.toLowerCase().includes("resource_exhausted");
@@ -263,7 +270,7 @@ export class GeminiService implements TranslationService {
     const ai = this.getAIInstance();
 
     if (!ai) {
-      throw new Error("Không tìm thấy API Key. Vui lòng chọn 'Chọn Key từ AI Studio' hoặc nhập API Key thủ công trong phần Cài đặt.");
+      throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
     }
 
     const systemInstruction = `
@@ -356,7 +363,7 @@ export class GeminiService implements TranslationService {
     const ai = this.getAIInstance();
 
     if (!ai) {
-      throw new Error("Không tìm thấy API Key. Vui lòng chọn 'Chọn Key từ AI Studio' hoặc nhập API Key thủ công trong phần Cài đặt.");
+      throw new Error("Không tìm thấy API Key. Vui lòng nhập API Key trong phần Cài đặt hoặc chọn API Key từ hệ thống.");
     }
 
     const systemInstruction = `
@@ -381,7 +388,7 @@ export class GeminiService implements TranslationService {
               { text: prompt },
               {
                 inlineData: {
-                  mimeType: "image/webp",
+                  mimeType: "image/jpeg",
                   data: imageBuffer.split(",")[1],
                 },
               },
