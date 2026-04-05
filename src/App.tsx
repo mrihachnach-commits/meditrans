@@ -74,6 +74,102 @@ import {
   Timestamp
 } from './firebase';
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      let errorMessage = "Đã có lỗi xảy ra. Vui lòng tải lại trang.";
+      try {
+        if (this.state.error?.message.startsWith('{')) {
+          const info = JSON.parse(this.state.error.message);
+          errorMessage = `Lỗi hệ thống (${info.operationType}): ${info.error}`;
+        }
+      } catch (e) {}
+
+      return (
+        <div className="h-screen flex flex-col items-center justify-center bg-slate-50 p-8 text-center">
+          <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 max-w-md">
+            <AlertCircle className="w-16 h-16 text-rose-500 mx-auto mb-6" />
+            <h2 className="text-2xl font-display font-bold text-slate-800 mb-4">Rất tiếc!</h2>
+            <p className="text-slate-500 mb-8">{errorMessage}</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="w-full py-4 bg-indigo-600 text-white rounded-full font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95"
+            >
+              Tải lại trang
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -197,17 +293,22 @@ export default function App() {
       
       if (currentUser) {
         // Ensure user profile exists in Firestore
-        const userRef = doc(db, 'users', currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            uid: currentUser.uid,
-            email: currentUser.email,
-            displayName: currentUser.displayName,
-            photoURL: currentUser.photoURL,
-            createdAt: serverTimestamp(),
-            role: 'user'
-          });
+        const path = `users/${currentUser.uid}`;
+        try {
+          const userRef = doc(db, 'users', currentUser.uid);
+          const userSnap = await getDoc(userRef);
+          if (!userSnap.exists()) {
+            await setDoc(userRef, {
+              uid: currentUser.uid,
+              email: currentUser.email,
+              displayName: currentUser.displayName,
+              photoURL: currentUser.photoURL,
+              createdAt: serverTimestamp(),
+              role: 'user'
+            });
+          }
+        } catch (error) {
+          handleFirestoreError(error, OperationType.WRITE, path);
         }
       }
     });
@@ -216,6 +317,7 @@ export default function App() {
 
   useEffect(() => {
     if (user) {
+      const path = 'apiKeys';
       const q = query(collection(db, 'apiKeys'), where('ownerId', '==', user.uid));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const keys = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -225,6 +327,8 @@ export default function App() {
         if (keys.length > 0 && !selectedKeyId) {
           setSelectedKeyId(keys[0].id);
         }
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, path);
       });
       return () => unsubscribe();
     } else {
@@ -279,6 +383,7 @@ export default function App() {
 
   const handleAddKey = async () => {
     if (!user || !newKey.name || !newKey.value) return;
+    const path = 'apiKeys';
     try {
       await setDoc(doc(collection(db, 'apiKeys')), {
         ownerId: user.uid,
@@ -291,17 +396,33 @@ export default function App() {
       setNewKey({ name: '', value: '', engine: 'gemini' });
       setIsAddingKey(false);
     } catch (error) {
-      console.error("Failed to add key:", error);
+      handleFirestoreError(error, OperationType.WRITE, path);
     }
   };
 
   const handleDeleteKey = async (keyId: string) => {
+    const path = `apiKeys/${keyId}`;
     try {
       await deleteDoc(doc(db, 'apiKeys', keyId));
       if (selectedKeyId === keyId) setSelectedKeyId(null);
     } catch (error) {
-      console.error("Failed to delete key:", error);
+      handleFirestoreError(error, OperationType.DELETE, path);
     }
+  };
+
+  const handleDownload = () => {
+    const content = translations[currentPage]?.content;
+    if (!content) return;
+
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `MediTrans_Page_${currentPage}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const [fileUrl, setFileUrl] = useState<string | null>(null);
@@ -973,15 +1094,25 @@ export default function App() {
   };
 
   const [tempKeys, setTempKeys] = useState<Record<TranslationEngine, string>>(engineKeys);
+  const [testStatus, setTestStatus] = useState<{ type: 'success' | 'error' | 'loading' | null, message: string }>({ type: null, message: '' });
 
   useEffect(() => {
     if (showSettings) {
-      setTempKeys(engineKeys);
+      let currentKey = engineKeys[selectedEngine];
+      if (user && selectedKeyId) {
+        const vaultKey = userKeys.find(k => k.id === selectedKeyId);
+        const currentEngineType = selectedEngine.startsWith('gemini') ? 'gemini' : selectedEngine;
+        if (vaultKey && vaultKey.engine === currentEngineType) {
+          currentKey = vaultKey.value;
+        }
+      }
+      setTempKeys({ ...engineKeys, [selectedEngine]: currentKey });
     }
-  }, [showSettings, engineKeys]);
+  }, [showSettings, engineKeys, user, selectedKeyId, userKeys, selectedEngine]);
 
   return (
-    <div className={cn("h-screen flex flex-col bg-slate-50 overflow-hidden", isFullScreen && "fixed inset-0 z-50")}>
+    <ErrorBoundary>
+      <div className={cn("h-screen flex flex-col bg-slate-50 overflow-hidden", isFullScreen && "fixed inset-0 z-50")}>
       {/* Header */}
       <header className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4 shrink-0 shadow-sm z-30">
         <div className="flex items-center gap-2">
@@ -1437,7 +1568,10 @@ export default function App() {
                 
                 <div className="flex items-center gap-2 min-w-max ml-4">
                   {translations[currentPage]?.status === 'success' && (
-                    <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 uppercase tracking-tighter transition-all border border-indigo-100">
+                    <button 
+                      onClick={handleDownload}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 uppercase tracking-tighter transition-all border border-indigo-100"
+                    >
                       <Download className="w-3.5 h-3.5" /> Tải xuống
                     </button>
                   )}
@@ -1863,41 +1997,51 @@ export default function App() {
                       <input 
                         type="password"
                         value={tempKeys['gemini-flash']}
-                        onChange={(e) => setTempKeys(prev => ({ ...prev, ['gemini-flash']: e.target.value }))}
+                        onChange={(e) => {
+                          setTempKeys(prev => ({ ...prev, ['gemini-flash']: e.target.value }));
+                          setTestStatus({ type: null, message: '' });
+                        }}
                         placeholder="Nhập API Key cho Gemini..."
                         className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm"
                       />
                       <button 
                         onClick={async () => {
                           if (!tempKeys['gemini-flash']) {
-                            alert("Vui lòng nhập API Key để kiểm tra.");
+                            setTestStatus({ type: 'error', message: "Vui lòng nhập API Key để kiểm tra." });
                             return;
                           }
+                          setTestStatus({ type: 'loading', message: "Đang kiểm tra..." });
                           const testService = new GeminiService(tempKeys['gemini-flash'], "gemini-3-flash-preview");
                           try {
-                            const btn = document.activeElement as HTMLButtonElement;
-                            if (btn) {
-                              btn.disabled = true;
-                              btn.innerHTML = '<svg class="animate-spin h-4 w-4 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
-                            }
                             await testService.lookupMedicalTerm("test");
-                            alert("Kết nối thành công! API Key hoạt động tốt.");
+                            setTestStatus({ type: 'success', message: "Kết nối thành công! API Key hoạt động tốt." });
                           } catch (err: any) {
-                            alert("Lỗi kết nối: " + err.message);
-                          } finally {
-                            const btn = document.activeElement as HTMLButtonElement;
-                            if (btn) {
-                              btn.disabled = false;
-                              btn.innerHTML = '<svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
-                            }
+                            setTestStatus({ type: 'error', message: "Lỗi kết nối: " + err.message });
                           }
                         }}
-                        className="px-4 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-all flex items-center justify-center"
+                        disabled={testStatus.type === 'loading'}
+                        className="px-4 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-all flex items-center justify-center disabled:opacity-50"
                         title="Kiểm tra kết nối"
                       >
-                        <CheckCircle2 className="w-4 h-4" />
+                        {testStatus.type === 'loading' ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4" />
+                        )}
                       </button>
                     </div>
+
+                    {testStatus.type && (
+                      <div className={cn(
+                        "mt-2 p-3 rounded-xl text-[10px] font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-1",
+                        testStatus.type === 'success' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : 
+                        testStatus.type === 'error' ? "bg-rose-50 text-rose-600 border border-rose-100" :
+                        "bg-indigo-50 text-indigo-600 border border-indigo-100"
+                      )}>
+                        {testStatus.type === 'success' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                        {testStatus.message}
+                      </div>
+                    )}
                     
                     <div className="mt-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
                       <p className="text-[10px] text-indigo-700 leading-relaxed">
@@ -2068,5 +2212,6 @@ export default function App() {
         </footer>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

@@ -58,8 +58,8 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "mrihachnach@gmail.com" && request.auth.token.email_verified == true) ||
-          (request.auth.token.email == "admin@gmail.com" && request.auth.token.email_verified == true)); // Default admins
+          request.auth.token.email == "mrihachnach@gmail.com" ||
+          request.auth.token.email == "admin@gmail.com"); // Default admins
     }
 
     // ===============================================================
@@ -70,8 +70,9 @@ service cloud.firestore {
       return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'createdAt', 'role']) &&
              data.uid is string && data.uid.size() > 0 &&
              data.email is string && isValidEmail(data.email) &&
-             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
-             (!('photoURL' in data) || (data.photoURL is string && isValidUrl(data.photoURL)));
+             (data.displayName == null || (data.displayName is string && data.displayName.size() < 100)) &&
+             (data.photoURL == null || (data.photoURL is string && isValidUrl(data.photoURL))) &&
+             (data.createdAt == null || data.createdAt is timestamp);
     }
 
     function isValidApiKey(data) {
