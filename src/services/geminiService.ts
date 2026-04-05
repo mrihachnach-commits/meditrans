@@ -12,8 +12,10 @@ export class GeminiService implements TranslationService {
   }
 
   private getAIInstance(): any {
-    // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio
-    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio/Vercel
+    const envKey = (typeof process !== 'undefined' ? (process.env.GEMINI_API_KEY || process.env.API_KEY) : null) || 
+                   // @ts-ignore - Vite specific
+                   (import.meta.env.VITE_GEMINI_API_KEY);
     const key = (this.apiKey && this.apiKey.trim() !== "") ? this.apiKey : envKey;
     
     if (key && key.trim() !== "" && key !== "MY_GEMINI_API_KEY") {
@@ -29,7 +31,9 @@ export class GeminiService implements TranslationService {
   async hasApiKey(): Promise<boolean> {
     if (this.apiKey && this.apiKey.trim() !== "") return true;
     
-    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    const envKey = (typeof process !== 'undefined' ? (process.env.GEMINI_API_KEY || process.env.API_KEY) : null) || 
+                   // @ts-ignore - Vite specific
+                   (import.meta.env.VITE_GEMINI_API_KEY);
     if (envKey && envKey.trim() !== "" && envKey !== "MY_GEMINI_API_KEY") return true;
     
     if (typeof window !== 'undefined' && (window as any).aistudio?.hasSelectedApiKey) {

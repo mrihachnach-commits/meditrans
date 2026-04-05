@@ -5,12 +5,14 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import * as pdfjs from 'pdfjs-dist';
+// @ts-ignore - Vite specific import
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
 import { MedicalDictionary } from './components/MedicalDictionary';
 
-// Use a reliable CDN for the worker that matches the installed version exactly
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Use local bundled worker for better performance and reliability across environments
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 import { 
   Upload, 
@@ -236,7 +238,9 @@ export default function App() {
     }
     
     // Initial defaults
-    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    const envKey = (typeof process !== 'undefined' ? (process.env.GEMINI_API_KEY || process.env.API_KEY) : null) || 
+                   // @ts-ignore - Vite specific
+                   (import.meta.env.VITE_GEMINI_API_KEY);
     const defaultKey = (envKey && envKey.trim() !== "") ? envKey : '';
     
     return {
@@ -1047,6 +1051,14 @@ export default function App() {
       if (vaultKey && vaultKey.engine === currentEngineType) {
         key = vaultKey.value;
       }
+    }
+
+    // Fallback to environment variables if no key is selected
+    if (!key) {
+      const envKey = (typeof process !== 'undefined' ? (process.env.GEMINI_API_KEY || process.env.API_KEY) : null) || 
+                     // @ts-ignore - Vite specific
+                     (import.meta.env.VITE_GEMINI_API_KEY);
+      key = envKey;
     }
 
     if (selectedEngine === 'gemini-flash') {
