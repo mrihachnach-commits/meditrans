@@ -5,13 +5,12 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import * as pdfjs from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
 import { MedicalDictionary } from './components/MedicalDictionary';
 
-// Use local bundled worker for better performance and reliability across environments
-pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
+// Use a reliable CDN for the worker that matches the installed version exactly
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 import { 
   Upload, 
@@ -220,10 +219,6 @@ export default function App() {
   }, [currentPage, numPages, currentJob]);
 
   const [isTranslating, setIsTranslating] = useState(false);
-  const isTranslatingRef = useRef(false);
-  useEffect(() => {
-    isTranslatingRef.current = isTranslating;
-  }, [isTranslating]);
   const selectedEngine: TranslationEngine = 'gemini-flash';
   
   const [engineKeys, setEngineKeys] = useState<Record<TranslationEngine, string>>(() => {
@@ -237,8 +232,7 @@ export default function App() {
     }
     
     // Initial defaults
-    const envKey = (typeof process !== 'undefined' ? (process.env.GEMINI_API_KEY || process.env.API_KEY) : null) || 
-                   (import.meta.env.VITE_GEMINI_API_KEY);
+    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
     const defaultKey = (envKey && envKey.trim() !== "") ? envKey : '';
     
     return {
@@ -248,8 +242,6 @@ export default function App() {
     };
   });
   const [showSettings, setShowSettings] = useState(false);
-  const [showDownloadModal, setShowDownloadModal] = useState(false);
-  const [selectedPagesToDownload, setSelectedPagesToDownload] = useState<number[]>([]);
   const [hasEnvKey, setHasEnvKey] = useState(false);
 
   useEffect(() => {
@@ -264,12 +256,7 @@ export default function App() {
 
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [mobileViewMode, setMobileViewMode] = useState<'pdf' | 'translation'>('pdf');
-  const [autoTranslate, setAutoTranslate] = useState(true);
-  const [useOCR, setUseOCR] = useState(false);
-  const useOCRRef = useRef(false);
-  useEffect(() => {
-    useOCRRef.current = useOCR;
-  }, [useOCR]);
+  const [autoTranslate, setAutoTranslate] = useState(false);
   const [zoom, setZoom] = useState(0.82); // Default to 82% as requested
   const [isAutoFit, setIsAutoFit] = useState(true);
   
@@ -426,106 +413,73 @@ export default function App() {
     }
   };
 
-  const handleDownload = async (pagesToDownload?: number[]) => {
-    const pages = pagesToDownload || [currentPage];
-    const availablePages = pages.filter(p => translations[p]?.status === 'success');
-    
-    if (availablePages.length === 0) return;
+  const handleDownload = async () => {
+    const content = translations[currentPage]?.content;
+    if (!content) return;
 
     try {
-      const allChildren: Paragraph[] = [];
-      
-      for (const pageNum of availablePages) {
-        const content = translations[pageNum]?.content;
-        if (!content) continue;
+      // Create a simple docx document from the markdown content
+      // We'll split by lines and handle basic markdown symbols for a cleaner look
+      const lines = content.split('\n');
+      const children = lines.map(line => {
+        let text = line.trim();
+        if (!text) return new Paragraph({ spacing: { after: 120 }, children: [new TextRun("")] });
 
-        // Add page header
-        allChildren.push(new Paragraph({
-          heading: HeadingLevel.HEADING_1,
-          alignment: "center",
-          spacing: { before: 400, after: 200 },
+        let isHeading = false;
+        let headingLevel: any = undefined;
+
+        if (text.startsWith('### ')) {
+          text = text.replace('### ', '');
+          isHeading = true;
+          headingLevel = HeadingLevel.HEADING_3;
+        } else if (text.startsWith('## ')) {
+          text = text.replace('## ', '');
+          isHeading = true;
+          headingLevel = HeadingLevel.HEADING_2;
+        } else if (text.startsWith('# ')) {
+          text = text.replace('# ', '');
+          isHeading = true;
+          headingLevel = HeadingLevel.HEADING_1;
+        }
+
+        // Handle bullet points
+        let isBullet = false;
+        if (text.startsWith('- ') || text.startsWith('* ')) {
+          text = text.substring(2);
+          isBullet = true;
+        }
+
+        return new Paragraph({
+          heading: isHeading ? headingLevel : undefined,
+          bullet: isBullet ? { level: 0 } : undefined,
+          spacing: {
+            after: 120,
+          },
           children: [
             new TextRun({
-              text: `Trang ${pageNum}`,
-              bold: true,
-              color: "4F46E5",
-              size: 32,
-              font: "Times New Roman"
+              text: text,
+              size: isHeading ? 28 : 24, // Slightly larger for headings
+              font: "Times New Roman",
+              bold: isHeading
             })
           ]
-        }));
-
-        const lines = content.split('\n');
-        const pageParagraphs = lines.map(line => {
-          let text = line.trim();
-          if (!text) return new Paragraph({ spacing: { after: 120 }, children: [new TextRun("")] });
-
-          let isHeading = false;
-          let headingLevel: any = undefined;
-
-          if (text.startsWith('### ')) {
-            text = text.replace('### ', '');
-            isHeading = true;
-            headingLevel = HeadingLevel.HEADING_3;
-          } else if (text.startsWith('## ')) {
-            text = text.replace('## ', '');
-            isHeading = true;
-            headingLevel = HeadingLevel.HEADING_2;
-          } else if (text.startsWith('# ')) {
-            text = text.replace('# ', '');
-            isHeading = true;
-            headingLevel = HeadingLevel.HEADING_1;
-          }
-
-          let isBullet = false;
-          if (text.startsWith('- ') || text.startsWith('* ')) {
-            text = text.substring(2);
-            isBullet = true;
-          }
-
-          return new Paragraph({
-            heading: isHeading ? headingLevel : undefined,
-            bullet: isBullet ? { level: 0 } : undefined,
-            spacing: { after: 120 },
-            children: [
-              new TextRun({
-                text: text,
-                size: isHeading ? 28 : 24,
-                font: "Times New Roman",
-                bold: isHeading
-              })
-            ]
-          });
         });
-
-        allChildren.push(...pageParagraphs);
-        
-        // Add page break if not the last page
-        if (pageNum !== availablePages[availablePages.length - 1]) {
-          allChildren.push(new Paragraph({
-            children: [new TextRun({ text: "", break: 1 })]
-          }));
-        }
-      }
+      });
 
       const doc = new Document({
         sections: [{
           properties: {},
-          children: allChildren,
+          children: children,
         }],
       });
 
       const blob = await Packer.toBlob(doc);
-      const fileName = availablePages.length === 1 
-        ? `MediTrans_Trang_${availablePages[0]}.docx` 
-        : `MediTrans_Tong_Hop_${availablePages.length}_Trang.docx`;
-      saveAs(blob, fileName);
+      saveAs(blob, `MediTrans_Trang_${currentPage}.docx`);
     } catch (error) {
       console.error("Error generating docx:", error);
-      // Fallback to markdown if docx fails (just for the first page if multiple)
-      const firstPageContent = translations[availablePages[0]]?.content || "";
-      const blob = new Blob([firstPageContent], { type: 'text/markdown' });
-      saveAs(blob, `MediTrans_Trang_${availablePages[0]}.md`);
+      // Fallback to markdown if docx fails
+      const blob = new Blob([content], { type: 'text/markdown' });
+      saveAs(blob, `MediTrans_Trang_${currentPage}.md`);
     }
   };
 
@@ -555,11 +509,6 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const renderTaskRef = useRef<any>(null);
   const translationService = useRef<TranslationService | null>(null);
-
-  // Pre-load PDF worker
-  useEffect(() => {
-    console.log(`[MediTrans AI] Pre-loading PDF worker v${pdfjs.version}...`);
-  }, []);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -640,30 +589,24 @@ export default function App() {
         renderTaskRef.current = renderTask;
         await renderTask.promise;
         
-        // Signal that visual rendering is done so translation can start immediately
-        setIsRendering(false);
-        isRenderingRef.current = false;
-        
-        // Render text layer in the background
+        // Render text layer
         const textContent = await page.getTextContent();
         const textLayerDiv = textLayerRef.current;
-        if (textLayerDiv) {
-          textLayerDiv.innerHTML = '';
-          
-          // Use the same scale as the visual representation
-          const textViewport = page.getViewport({ scale: zoom });
-          textLayerDiv.style.width = `${textViewport.width}px`;
-          textLayerDiv.style.height = `${textViewport.height}px`;
-          textLayerDiv.style.left = '0';
-          textLayerDiv.style.top = '0';
-          
-          const textLayer = new pdfjs.TextLayer({
-            textContentSource: textContent,
-            container: textLayerDiv,
-            viewport: textViewport,
-          });
-          await textLayer.render();
-        }
+        textLayerDiv.innerHTML = '';
+        
+        // Use the same scale as the visual representation
+        const textViewport = page.getViewport({ scale: zoom });
+        textLayerDiv.style.width = `${textViewport.width}px`;
+        textLayerDiv.style.height = `${textViewport.height}px`;
+        textLayerDiv.style.left = '0';
+        textLayerDiv.style.top = '0';
+        
+        const textLayer = new pdfjs.TextLayer({
+          textContentSource: textContent,
+          container: textLayerDiv,
+          viewport: textViewport,
+        });
+        await textLayer.render();
 
         // Crucial for memory: cleanup page resources
         page.cleanup();
@@ -672,6 +615,7 @@ export default function App() {
       if (error.name !== 'RenderingCancelledException') {
         console.error("Error rendering page:", error);
       }
+    } finally {
       setIsRendering(false);
       isRenderingRef.current = false;
     }
@@ -738,10 +682,9 @@ export default function App() {
     }
 
     // If still rendering, we don't want to capture a half-rendered or old page
-    // BUT if we are NOT using OCR, we don't need the canvas, so we don't need to wait for rendering
-    if (useOCRRef.current && isRenderingRef.current) {
-      // Retry after a very short delay
-      setTimeout(() => translateCurrentPage(targetPage, force), 10);
+    if (isRenderingRef.current) {
+      // Retry after a short delay
+      setTimeout(() => translateCurrentPage(targetPage, force), 200);
       return;
     }
     
@@ -761,111 +704,46 @@ export default function App() {
     // Set active translation for smooth streaming without re-rendering the whole list
     setActiveTranslation({ page: targetPage, content: '', status: 'loading' });
     setIsTranslating(true);
-    translatingPagesRef.current.add(targetPage);
 
     try {
-      let text: string | undefined = undefined;
-      let imageBuffer: string | undefined = undefined;
-
-      // If OCR is disabled, try to extract text from the PDF directly
-      if (!useOCRRef.current && pdfDoc) {
-        try {
-          const page = await pdfDoc.getPage(targetPage);
-          const textContent = await page.getTextContent();
-          
-          // Group items by their Y coordinate to preserve line structure
-          const lines: Record<number, any[]> = {};
-          textContent.items.forEach((item: any) => {
-            const y = Math.round(item.transform[5]);
-            if (!lines[y]) lines[y] = [];
-            lines[y].push(item);
-          });
-
-          // Sort Y coordinates from top to bottom
-          const sortedY = Object.keys(lines).map(Number).sort((a, b) => b - a);
-
-          const extractedText = sortedY.map(y => {
-            // Sort items in the same line by X coordinate
-            return lines[y]
-              .sort((a, b) => a.transform[4] - b.transform[4])
-              .map(item => item.str)
-              .join(' ');
-          }).join('\n');
-
-          console.log(`Extracted text for page ${targetPage}:`, extractedText.substring(0, 500) + (extractedText.length > 500 ? "..." : ""));
-
-          page.cleanup();
-          
-          // Only use text extraction if it actually found some content
-          if (extractedText.trim().length > 10) {
-            text = extractedText;
-          }
-        } catch (e) {
-          console.warn("Failed to extract text from PDF page:", e);
+      // Create a temporary canvas for optimized capture
+      const originalCanvas = canvasRef.current;
+      const MAX_DIMENSION = 1600; // Optimized for OCR without being too large
+      
+      let captureCanvas = originalCanvas;
+      
+      // Resize if the original is too large to reduce payload size and API latency
+      if (originalCanvas.width > MAX_DIMENSION || originalCanvas.height > MAX_DIMENSION) {
+        const tempCanvas = document.createElement('canvas');
+        const ratio = Math.min(MAX_DIMENSION / originalCanvas.width, MAX_DIMENSION / originalCanvas.height);
+        tempCanvas.width = originalCanvas.width * ratio;
+        tempCanvas.height = originalCanvas.height * ratio;
+        
+        const tempCtx = tempCanvas.getContext('2d');
+        if (tempCtx) {
+          tempCtx.drawImage(originalCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
+          captureCanvas = tempCanvas;
         }
       }
 
-      // If we don't have text (either OCR is on or extraction failed), capture the canvas
-      if (!text) {
-        // Create a temporary canvas for optimized capture
-        const originalCanvas = canvasRef.current;
-        const MAX_DIMENSION = 1600; // Optimized for OCR without being too large
-        
-        let captureCanvas = originalCanvas;
-        
-        // Resize if the original is too large to reduce payload size and API latency
-        if (originalCanvas.width > MAX_DIMENSION || originalCanvas.height > MAX_DIMENSION) {
-          const tempCanvas = document.createElement('canvas');
-          const ratio = Math.min(MAX_DIMENSION / originalCanvas.width, MAX_DIMENSION / originalCanvas.height);
-          tempCanvas.width = originalCanvas.width * ratio;
-          tempCanvas.height = originalCanvas.height * ratio;
-          
-          const tempCtx = tempCanvas.getContext('2d');
-          if (tempCtx) {
-            tempCtx.drawImage(originalCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
-            captureCanvas = tempCanvas;
-          }
-        }
-
-        imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.8); // JPEG is generally faster to encode than WebP
-      }
-
+      const imageBuffer = captureCanvas.toDataURL('image/webp', 0.8); // Use WebP for smaller payload and faster upload
       const stream = translationService.current.translateMedicalPageStream({
         imageBuffer,
-        text,
         pageNumber: targetPage,
         signal
       });
       
       let fullContent = "";
       let lastUpdateTime = Date.now();
-      let lastChunkTime = Date.now();
       const UPDATE_INTERVAL = 100; // Update UI every 100ms for smooth streaming without lag
-      const CHUNK_TIMEOUT = 20000; // 20 seconds timeout for a single chunk
 
-      // Create a timeout monitor
-      const timeoutCheck = setInterval(() => {
-        if (Date.now() - lastChunkTime > CHUNK_TIMEOUT) {
-          console.error("Translation stream timed out after 20s of inactivity");
-          if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-          }
-          clearInterval(timeoutCheck);
+      for await (const chunk of stream) {
+        fullContent += chunk;
+        const now = Date.now();
+        if (now - lastUpdateTime > UPDATE_INTERVAL) {
+          setActiveTranslation({ page: targetPage, content: fullContent, status: 'loading' });
+          lastUpdateTime = now;
         }
-      }, 1000);
-
-      try {
-        for await (const chunk of stream) {
-          fullContent += chunk;
-          lastChunkTime = Date.now();
-          const now = Date.now();
-          if (now - lastUpdateTime > UPDATE_INTERVAL) {
-            setActiveTranslation({ page: targetPage, content: fullContent, status: 'loading' });
-            lastUpdateTime = now;
-          }
-        }
-      } finally {
-        clearInterval(timeoutCheck);
       }
       
       // Final update to ensure everything is rendered
@@ -875,7 +753,7 @@ export default function App() {
       setTranslations(prev => ({ ...prev, [targetPage]: finalResult }));
       setActiveTranslation(null);
     } catch (error: any) {
-      if (error.message === "Translation aborted" || error.name === 'AbortError') {
+      if (error.message === "Translation aborted") {
         console.log("Translation aborted by user");
         return;
       }
@@ -907,87 +785,43 @@ export default function App() {
     translatingPagesRef.current.add(pageNum);
     
     try {
-      let text: string | undefined = undefined;
-      let imageBuffer: string | undefined = undefined;
-
-      // If OCR is disabled, try to extract text from the PDF directly
-      if (!useOCRRef.current) {
-        try {
-          const page = await pdfDoc.getPage(pageNum);
-          const textContent = await page.getTextContent();
-          
-          // Group items by their Y coordinate to preserve line structure
-          const lines: Record<number, any[]> = {};
-          textContent.items.forEach((item: any) => {
-            const y = Math.round(item.transform[5]);
-            if (!lines[y]) lines[y] = [];
-            lines[y].push(item);
-          });
-
-          // Sort Y coordinates from top to bottom
-          const sortedY = Object.keys(lines).map(Number).sort((a, b) => b - a);
-
-          const extractedText = sortedY.map(y => {
-            // Sort items in the same line by X coordinate
-            return lines[y]
-              .sort((a, b) => a.transform[4] - b.transform[4])
-              .map(item => item.str)
-              .join(' ');
-          }).join('\n');
-
-          page.cleanup();
-          
-          if (extractedText.trim().length > 10) {
-            text = extractedText;
-          }
-        } catch (e) {
-          console.warn(`Failed to extract text from PDF page ${pageNum}:`, e);
-        }
+      const page = await pdfDoc.getPage(pageNum);
+      if (signal?.aborted) {
+        page.cleanup();
+        return;
       }
 
-      if (!text) {
-        const page = await pdfDoc.getPage(pageNum);
+      // Use a fixed scale for pre-translation OCR to ensure consistency and quality
+      const viewport = page.getViewport({ scale: 2 }); 
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const context = canvas.getContext('2d');
+      
+      if (context) {
+        const renderTask = page.render({
+          canvasContext: context,
+          viewport: viewport,
+        } as any);
+        
+        if (signal) {
+          signal.addEventListener('abort', () => renderTask.cancel());
+        }
+
+        await renderTask.promise;
+        
         if (signal?.aborted) {
           page.cleanup();
           return;
         }
 
-        // Use a fixed scale for pre-translation OCR to ensure consistency and quality
-        const viewport = page.getViewport({ scale: 2 }); 
-        
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        const context = canvas.getContext('2d');
-        
-        if (context) {
-          const renderTask = page.render({
-            canvasContext: context,
-            viewport: viewport,
-          } as any);
-          
-          if (signal) {
-            signal.addEventListener('abort', () => renderTask.cancel());
-          }
-
-          await renderTask.promise;
-          
-          if (signal?.aborted) {
-            page.cleanup();
-            return;
-          }
-
-          imageBuffer = canvas.toDataURL('image/jpeg', 0.8);
-        }
-        page.cleanup();
-      }
-
-      const stream = translationService.current.translateMedicalPageStream({
-        imageBuffer,
-        text,
-        pageNumber: pageNum,
-        signal
-      });
+        const imageBuffer = canvas.toDataURL('image/webp', 0.8);
+        const stream = translationService.current.translateMedicalPageStream({
+          imageBuffer,
+          pageNumber: pageNum,
+          signal
+        });
         
         let fullContent = "";
         let lastUpdateTime = Date.now();
@@ -1023,11 +857,13 @@ export default function App() {
           setActiveTranslation(null);
           setIsTranslating(false);
         }
-    } catch (error: any) {
-      if (error.message === "Translation aborted" || error.name === 'AbortError') {
-        return;
       }
-      console.error(`Pre-translation error for page ${pageNum}:`, error);
+      
+      page.cleanup();
+    } catch (error: any) {
+      if (error.message !== "Translation aborted") {
+        console.error(`Pre-translation error for page ${pageNum}:`, error);
+      }
     } finally {
       translatingPagesRef.current.delete(pageNum);
       // If it was the current page, reset global translating state
@@ -1069,13 +905,6 @@ export default function App() {
       if (vaultKey && vaultKey.engine === currentEngineType) {
         key = vaultKey.value;
       }
-    }
-
-    // Fallback to environment variables if no key is selected
-    if (!key) {
-      const envKey = (typeof process !== 'undefined' ? (process.env.GEMINI_API_KEY || process.env.API_KEY) : null) || 
-                     (import.meta.env.VITE_GEMINI_API_KEY);
-      key = envKey;
     }
 
     if (selectedEngine === 'gemini-flash') {
@@ -1130,16 +959,16 @@ export default function App() {
   }, [pdfDoc, isAutoFit, currentPage]);
 
   useEffect(() => {
-    if (pdfDoc && autoTranslate && !isRendering && !isTranslating && !translations[currentPage]) {
+    if (pdfDoc && autoTranslate && !isRendering && !translations[currentPage]) {
       const timer = setTimeout(() => {
         // Re-check conditions after delay
-        if (!isRenderingRef.current && !isTranslatingRef.current && !translationsRef.current[currentPage]) {
+        if (!isRenderingRef.current && !translationsRef.current[currentPage]) {
           translateCurrentPage(currentPage);
         }
-      }, 20); // Reduced delay from 100ms to 20ms for near-instant startup
+      }, 400); // Reduced delay to prioritize current page
       return () => clearTimeout(timer);
     }
-  }, [currentPage, pdfDoc, autoTranslate, isRendering, isTranslating, translations, translateCurrentPage]);
+  }, [currentPage, pdfDoc, autoTranslate, isRendering, translations, translateCurrentPage]);
 
   useEffect(() => {
     if (pdfDoc) {
@@ -1750,23 +1579,6 @@ export default function App() {
                   {isTranslating && <div className="h-4 w-px bg-slate-200" />}
 
                   <button 
-                    onClick={() => setUseOCR(!useOCR)}
-                    className={cn(
-                      "flex items-center gap-1.5 px-2 py-0.5 rounded-full transition-all border",
-                      useOCR 
-                        ? "bg-indigo-50 border-indigo-100 text-indigo-600" 
-                        : "bg-slate-50 border-slate-100 text-slate-400 hover:text-slate-500"
-                    )}
-                    title="Dịch hình ảnh (OCR)"
-                  >
-                    <div className={cn(
-                      "w-1.5 h-1.5 rounded-full",
-                      useOCR ? "bg-indigo-500 animate-pulse" : "bg-slate-300"
-                    )} />
-                    <span className="text-[9px] font-black uppercase tracking-tight">OCR</span>
-                  </button>
-
-                  <button 
                     onClick={() => setAutoTranslate(!autoTranslate)}
                     className={cn(
                       "flex items-center gap-1.5 px-2 py-0.5 rounded-full transition-all border",
@@ -1818,34 +1630,28 @@ export default function App() {
                 </div>
                 
                 <div className="flex items-center gap-2 min-w-max ml-4">
-                  <button 
-                    onClick={() => {
-                      // Pre-select current page if it's translated
-                      if (translations[currentPage]?.status === 'success') {
-                        setSelectedPagesToDownload([currentPage]);
-                      } else {
-                        setSelectedPagesToDownload([]);
-                      }
-                      setShowDownloadModal(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 uppercase tracking-tighter transition-all border border-indigo-100"
-                  >
-                    <Download className="w-3.5 h-3.5" /> Tải xuống
-                  </button>
+                  {translations[currentPage]?.status === 'success' && (
+                    <button 
+                      onClick={handleDownload}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 uppercase tracking-tighter transition-all border border-indigo-100"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Tải xuống
+                    </button>
+                  )}
                   <button 
                     onClick={() => translateCurrentPage(currentPage, true)}
-                    disabled={isTranslating || (useOCR && isRendering)}
+                    disabled={isTranslating || isRendering}
                     className={cn(
                       "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg",
-                      (isTranslating || (useOCR && isRendering))
+                      (isTranslating || isRendering)
                         ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none" 
                         : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 hover:shadow-indigo-300 active:scale-95"
                     )}
                   >
-                    {isTranslating || (useOCR && isRendering) ? (
+                    {isTranslating || isRendering ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>{(useOCR && isRendering) ? 'Đang vẽ...' : 'Đang dịch...'}</span>
+                        <span>{isRendering ? 'Đang vẽ...' : 'Đang dịch...'}</span>
                       </>
                     ) : (
                       <>
@@ -1860,7 +1666,7 @@ export default function App() {
               <div className="flex-1 overflow-auto p-6 md:p-12 bg-white">
                 <AnimatePresence mode="wait">
                   {(!translations[currentPage] && (!activeTranslation || activeTranslation.page !== currentPage)) ? (
-                    ((useOCR && isRendering) || isPdfLoading) ? (
+                    (isRendering || isPdfLoading) ? (
                       <motion.div 
                         key="rendering"
                         initial={{ opacity: 0 }}
@@ -2526,129 +2332,6 @@ export default function App() {
                       Lưu cấu hình
                     </button>
                   </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Download Modal */}
-      <AnimatePresence>
-        {showDownloadModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowDownloadModal(false)}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden"
-            >
-              <div className="p-8">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-indigo-100 p-2 rounded-xl">
-                      <Download className="text-indigo-600 w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-display font-bold text-slate-800">Tải xuống bản dịch</h3>
-                      <p className="text-xs text-slate-400 font-medium">Chọn các trang bạn muốn xuất ra file Word (.docx)</p>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => setShowDownloadModal(false)}
-                    className="p-2 hover:bg-slate-100 rounded-full transition-colors"
-                  >
-                    <ChevronLeft className="w-5 h-5 text-slate-400 rotate-180" />
-                  </button>
-                </div>
-
-                <div className="mb-4 flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                  <div className="flex items-center gap-4">
-                    <button 
-                      onClick={() => {
-                        const allTranslated = Object.keys(translations)
-                          .filter(p => translations[Number(p)]?.status === 'success')
-                          .map(Number);
-                        setSelectedPagesToDownload(allTranslated);
-                      }}
-                      className="text-[10px] font-black text-indigo-600 hover:text-indigo-700 uppercase tracking-widest"
-                    >
-                      Chọn tất cả đã dịch
-                    </button>
-                    <button 
-                      onClick={() => setSelectedPagesToDownload([])}
-                      className="text-[10px] font-black text-slate-400 hover:text-slate-500 uppercase tracking-widest"
-                    >
-                      Bỏ chọn tất cả
-                    </button>
-                  </div>
-                  <div className="text-[10px] font-bold text-slate-500">
-                    Đã chọn: <span className="text-indigo-600">{selectedPagesToDownload.length}</span> trang
-                  </div>
-                </div>
-
-                <div className="max-h-[400px] overflow-y-auto pr-2 grid grid-cols-5 sm:grid-cols-8 gap-2 no-scrollbar p-1">
-                  {Array.from({ length: numPages }, (_, i) => i + 1).map(pageNum => {
-                    const isTranslated = translations[pageNum]?.status === 'success';
-                    const isSelected = selectedPagesToDownload.includes(pageNum);
-                    
-                    return (
-                      <button
-                        key={pageNum}
-                        disabled={!isTranslated}
-                        onClick={() => {
-                          if (isSelected) {
-                            setSelectedPagesToDownload(prev => prev.filter(p => p !== pageNum));
-                          } else {
-                            setSelectedPagesToDownload(prev => [...prev, pageNum].sort((a, b) => a - b));
-                          }
-                        }}
-                        className={cn(
-                          "aspect-square rounded-xl border flex flex-col items-center justify-center transition-all relative group",
-                          isSelected 
-                            ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100 scale-105 z-10" 
-                            : isTranslated
-                              ? "bg-white border-indigo-100 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/30"
-                              : "bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed opacity-60"
-                        )}
-                      >
-                        <span className="text-xs font-black">{pageNum}</span>
-                        {isTranslated && !isSelected && (
-                          <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                        )}
-                        {isSelected && (
-                          <CheckCircle2 className="w-3 h-3 absolute -top-1 -right-1 bg-white text-indigo-600 rounded-full" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-8 flex gap-3">
-                  <button 
-                    onClick={() => setShowDownloadModal(false)}
-                    className="flex-1 px-6 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors"
-                  >
-                    Hủy
-                  </button>
-                  <button 
-                    disabled={selectedPagesToDownload.length === 0}
-                    onClick={() => {
-                      handleDownload(selectedPagesToDownload);
-                      setShowDownloadModal(false);
-                    }}
-                    className="flex-1 px-6 py-3 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
-                  >
-                    <Download className="w-4 h-4" />
-                    Tải file Word ({selectedPagesToDownload.length} trang)
-                  </button>
                 </div>
               </div>
             </motion.div>

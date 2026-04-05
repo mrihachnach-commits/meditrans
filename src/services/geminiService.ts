@@ -12,9 +12,8 @@ export class GeminiService implements TranslationService {
   }
 
   private getAIInstance(): any {
-    // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio/Vercel
-    const envKey = (typeof process !== 'undefined' ? (process.env.GEMINI_API_KEY || process.env.API_KEY) : null) || 
-                   (import.meta.env.VITE_GEMINI_API_KEY);
+    // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio
+    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
     const key = (this.apiKey && this.apiKey.trim() !== "") ? this.apiKey : envKey;
     
     if (key && key.trim() !== "" && key !== "MY_GEMINI_API_KEY") {
@@ -30,8 +29,7 @@ export class GeminiService implements TranslationService {
   async hasApiKey(): Promise<boolean> {
     if (this.apiKey && this.apiKey.trim() !== "") return true;
     
-    const envKey = (typeof process !== 'undefined' ? (process.env.GEMINI_API_KEY || process.env.API_KEY) : null) || 
-                   (import.meta.env.VITE_GEMINI_API_KEY);
+    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
     if (envKey && envKey.trim() !== "" && envKey !== "MY_GEMINI_API_KEY") return true;
     
     if (typeof window !== 'undefined' && (window as any).aistudio?.hasSelectedApiKey) {
@@ -48,7 +46,7 @@ export class GeminiService implements TranslationService {
   }
 
   async *translateMedicalPageStream(options: TranslationOptions): AsyncGenerator<string> {
-    const { imageBuffer, text, pageNumber, signal } = options;
+    const { imageBuffer, pageNumber, signal } = options;
     
     if (signal?.aborted) {
       throw new Error("Translation aborted");
@@ -61,22 +59,11 @@ export class GeminiService implements TranslationService {
 
     const systemInstruction = `
       Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
-      Dịch ${text ? 'văn bản' : 'hình ảnh'} sang tiếng Việt, giữ nguyên định dạng Markdown.
-      
-      YÊU CẦU QUAN TRỌNG:
-      1. TRUNG THỰC: Dịch đúng nội dung được cung cấp. KHÔNG tự ý thêm tiêu đề "MỤC LỤC" nếu bản gốc không có.
-      2. GIỮ NGUYÊN CẤU TRÚC: Mỗi dòng trong bản gốc phải tương ứng với một dòng trong bản dịch.
-      3. MỤC LỤC (TABLE OF CONTENTS): 
-         - CHỈ áp dụng định dạng mục lục nếu trang thực sự là mục lục.
-         - Trình bày dưới dạng danh sách Markdown.
-         - Giữ nguyên các dấu chấm (....) và số trang ở cuối dòng.
-      4. THUẬT NGỮ: Sử dụng thuật ngữ y khoa chuyên ngành chuẩn xác.
-      5. KHÔNG thêm lời dẫn, giải thích hay bất kỳ nội dung nào ngoài bản dịch.
+      Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
+      Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
     `;
 
-    const prompt = text 
-      ? `Đây là nội dung văn bản từ trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung này sang tiếng Việt một cách chuyên nghiệp:\n\n${text}`
-      : `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
+    const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
 
     const MAX_RETRIES = 3;
     let retryCount = 0;
@@ -86,19 +73,21 @@ export class GeminiService implements TranslationService {
         throw new Error("Translation aborted");
       }
       try {
-        const parts: any[] = [{ text: prompt }];
-        if (imageBuffer && !text) {
-          parts.push({
-            inlineData: {
-              mimeType: "image/jpeg",
-              data: imageBuffer.split(",")[1],
-            },
-          });
-        }
-
         const response = await ai.models.generateContentStream({
           model: this.modelName,
-          contents: [{ parts }],
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    mimeType: "image/webp",
+                    data: imageBuffer.split(",")[1],
+                  },
+                },
+              ],
+            },
+          ],
           config: {
             systemInstruction: systemInstruction,
             temperature: 0.1,
@@ -132,9 +121,6 @@ export class GeminiService implements TranslationService {
         break;
 
       } catch (error: any) {
-        if (signal?.aborted || error.message === "Translation aborted") {
-          throw new Error("Translation aborted");
-        }
         const isQuotaError = error.message?.toLowerCase().includes("quota") || 
                            error.message?.toLowerCase().includes("429") ||
                            error.message?.toLowerCase().includes("resource_exhausted");
@@ -171,7 +157,7 @@ export class GeminiService implements TranslationService {
   }
 
   async translateMedicalPage(options: TranslationOptions): Promise<string> {
-    const { imageBuffer, text, pageNumber, signal } = options;
+    const { imageBuffer, pageNumber, signal } = options;
     
     if (signal?.aborted) {
       throw new Error("Translation aborted");
@@ -184,22 +170,11 @@ export class GeminiService implements TranslationService {
 
     const systemInstruction = `
       Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
-      Dịch ${text ? 'văn bản' : 'hình ảnh'} sang tiếng Việt, giữ nguyên định dạng Markdown.
-      
-      YÊU CẦU QUAN TRỌNG:
-      1. TRUNG THỰC: Dịch đúng nội dung được cung cấp. KHÔNG tự ý thêm tiêu đề "MỤC LỤC" nếu bản gốc không có.
-      2. GIỮ NGUYÊN CẤU TRÚC: Mỗi dòng trong bản gốc phải tương ứng với một dòng trong bản dịch.
-      3. MỤC LỤC (TABLE OF CONTENTS): 
-         - CHỈ áp dụng định dạng mục lục nếu trang thực sự là mục lục.
-         - Trình bày dưới dạng danh sách Markdown.
-         - Giữ nguyên các dấu chấm (....) và số trang ở cuối dòng.
-      4. THUẬT NGỮ: Sử dụng thuật ngữ y khoa chuyên ngành chuẩn xác.
-      5. KHÔNG thêm lời dẫn, giải thích hay bất kỳ nội dung nào ngoài bản dịch.
+      Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
+      Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
     `;
 
-    const prompt = text 
-      ? `Đây là nội dung văn bản từ trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung này sang tiếng Việt một cách chuyên nghiệp:\n\n${text}`
-      : `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
+    const prompt = `Đây là trang ${pageNumber} của một tài liệu y khoa. Hãy dịch toàn bộ nội dung trong hình ảnh này sang tiếng Việt một cách chuyên nghiệp.`;
 
     const MAX_RETRIES = 3;
     let retryCount = 0;
@@ -209,19 +184,21 @@ export class GeminiService implements TranslationService {
         throw new Error("Translation aborted");
       }
       try {
-        const parts: any[] = [{ text: prompt }];
-        if (imageBuffer && !text) {
-          parts.push({
-            inlineData: {
-              mimeType: "image/jpeg",
-              data: imageBuffer.split(",")[1],
-            },
-          });
-        }
-
         const response = await ai.models.generateContent({
           model: this.modelName,
-          contents: [{ parts }],
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    mimeType: "image/webp",
+                    data: imageBuffer.split(",")[1],
+                  },
+                },
+              ],
+            },
+          ],
           config: {
             systemInstruction: systemInstruction,
             temperature: 0.1,
@@ -237,9 +214,6 @@ export class GeminiService implements TranslationService {
 
         return response.text || "Model returned no text.";
       } catch (error: any) {
-        if (signal?.aborted || error.message === "Translation aborted") {
-          throw new Error("Translation aborted");
-        }
         const isQuotaError = error.message?.toLowerCase().includes("quota") || 
                            error.message?.toLowerCase().includes("429") ||
                            error.message?.toLowerCase().includes("resource_exhausted");
@@ -398,7 +372,7 @@ export class GeminiService implements TranslationService {
               { text: prompt },
               {
                 inlineData: {
-                  mimeType: "image/jpeg",
+                  mimeType: "image/webp",
                   data: imageBuffer.split(",")[1],
                 },
               },
