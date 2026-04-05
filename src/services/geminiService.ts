@@ -59,13 +59,17 @@ export class GeminiService implements TranslationService {
 
     const systemInstruction = `
       Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
-      Dịch ${text ? 'văn bản' : 'hình ảnh'} sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
+      Dịch ${text ? 'văn bản' : 'hình ảnh'} sang tiếng Việt, giữ nguyên định dạng Markdown.
       
       YÊU CẦU QUAN TRỌNG VỀ ĐỊNH DẠNG:
-      1. Giữ nguyên cấu trúc xuống dòng của bản gốc. Mỗi mục trong Mục lục (Table of Contents) hoặc Danh sách phải nằm trên một dòng riêng biệt.
-      2. Tuyệt đối không gộp các mục con (ví dụ: 6.1, 6.2, 6.3) vào cùng một dòng.
-      3. Giữ nguyên các ký tự phân cách (như dấu chấm ....) và số trang nếu có thể để bảo toàn bố cục.
-      4. Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
+      1. GIỮ NGUYÊN CẤU TRÚC DÒNG: Mỗi dòng trong bản gốc phải tương ứng với một dòng trong bản dịch.
+      2. MỤC LỤC (TABLE OF CONTENTS): 
+         - Trình bày dưới dạng danh sách Markdown (sử dụng - hoặc 1., 2.).
+         - Giữ nguyên các dấu chấm (....) và số trang ở cuối dòng.
+         - Đảm bảo mỗi mục nằm trên một dòng riêng biệt, không gộp dòng.
+      3. TIÊU ĐỀ VÀ DANH SÁCH: Sử dụng các cấp độ tiêu đề Markdown (#, ##, ###) và danh sách phù hợp.
+      4. THUẬT NGỮ: Sử dụng thuật ngữ y khoa chuyên ngành chuẩn xác.
+      5. KHÔNG thêm lời dẫn, giải thích hay bất kỳ nội dung nào ngoài bản dịch.
     `;
 
     const prompt = text 
@@ -178,13 +182,17 @@ export class GeminiService implements TranslationService {
 
     const systemInstruction = `
       Bạn là chuyên gia dịch thuật Y khoa (Medical Translation).
-      Dịch ${text ? 'văn bản' : 'hình ảnh'} sang tiếng Việt, giữ nguyên định dạng Markdown (tiêu đề, bảng, danh sách).
+      Dịch ${text ? 'văn bản' : 'hình ảnh'} sang tiếng Việt, giữ nguyên định dạng Markdown.
       
       YÊU CẦU QUAN TRỌNG VỀ ĐỊNH DẠNG:
-      1. Giữ nguyên cấu trúc xuống dòng của bản gốc. Mỗi mục trong Mục lục (Table of Contents) hoặc Danh sách phải nằm trên một dòng riêng biệt.
-      2. Tuyệt đối không gộp các mục con (ví dụ: 6.1, 6.2, 6.3) vào cùng một dòng.
-      3. Giữ nguyên các ký tự phân cách (như dấu chấm ....) và số trang nếu có thể để bảo toàn bố cục.
-      4. Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn hay giải thích.
+      1. GIỮ NGUYÊN CẤU TRÚC DÒNG: Mỗi dòng trong bản gốc phải tương ứng với một dòng trong bản dịch.
+      2. MỤC LỤC (TABLE OF CONTENTS): 
+         - Trình bày dưới dạng danh sách Markdown (sử dụng - hoặc 1., 2.).
+         - Giữ nguyên các dấu chấm (....) và số trang ở cuối dòng.
+         - Đảm bảo mỗi mục nằm trên một dòng riêng biệt, không gộp dòng.
+      3. TIÊU ĐỀ VÀ DANH SÁCH: Sử dụng các cấp độ tiêu đề Markdown (#, ##, ###) và danh sách phù hợp.
+      4. THUẬT NGỮ: Sử dụng thuật ngữ y khoa chuyên ngành chuẩn xác.
+      5. KHÔNG thêm lời dẫn, giải thích hay bất kỳ nội dung nào ngoài bản dịch.
     `;
 
     const prompt = text 

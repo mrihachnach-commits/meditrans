@@ -736,7 +736,8 @@ export default function App() {
     }
 
     // If still rendering, we don't want to capture a half-rendered or old page
-    if (isRenderingRef.current) {
+    // BUT if we are NOT using OCR, we don't need the canvas, so we don't need to wait for rendering
+    if (useOCRRef.current && isRenderingRef.current) {
       // Retry after a very short delay
       setTimeout(() => translateCurrentPage(targetPage, force), 10);
       return;
@@ -769,7 +770,26 @@ export default function App() {
         try {
           const page = await pdfDoc.getPage(targetPage);
           const textContent = await page.getTextContent();
-          const extractedText = textContent.items.map((item: any) => item.str).join(' ');
+          
+          // Group items by their Y coordinate to preserve line structure
+          const lines: Record<number, any[]> = {};
+          textContent.items.forEach((item: any) => {
+            const y = Math.round(item.transform[5]);
+            if (!lines[y]) lines[y] = [];
+            lines[y].push(item);
+          });
+
+          // Sort Y coordinates from top to bottom
+          const sortedY = Object.keys(lines).map(Number).sort((a, b) => b - a);
+
+          const extractedText = sortedY.map(y => {
+            // Sort items in the same line by X coordinate
+            return lines[y]
+              .sort((a, b) => a.transform[4] - b.transform[4])
+              .map(item => item.str)
+              .join(' ');
+          }).join('\n');
+
           page.cleanup();
           
           // Only use text extraction if it actually found some content
@@ -873,7 +893,26 @@ export default function App() {
         try {
           const page = await pdfDoc.getPage(pageNum);
           const textContent = await page.getTextContent();
-          const extractedText = textContent.items.map((item: any) => item.str).join(' ');
+          
+          // Group items by their Y coordinate to preserve line structure
+          const lines: Record<number, any[]> = {};
+          textContent.items.forEach((item: any) => {
+            const y = Math.round(item.transform[5]);
+            if (!lines[y]) lines[y] = [];
+            lines[y].push(item);
+          });
+
+          // Sort Y coordinates from top to bottom
+          const sortedY = Object.keys(lines).map(Number).sort((a, b) => b - a);
+
+          const extractedText = sortedY.map(y => {
+            // Sort items in the same line by X coordinate
+            return lines[y]
+              .sort((a, b) => a.transform[4] - b.transform[4])
+              .map(item => item.str)
+              .join(' ');
+          }).join('\n');
+
           page.cleanup();
           
           if (extractedText.trim().length > 10) {
@@ -1766,18 +1805,18 @@ export default function App() {
                   </button>
                   <button 
                     onClick={() => translateCurrentPage(currentPage, true)}
-                    disabled={isTranslating || isRendering}
+                    disabled={isTranslating || (useOCR && isRendering)}
                     className={cn(
                       "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg",
-                      (isTranslating || isRendering)
+                      (isTranslating || (useOCR && isRendering))
                         ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none" 
                         : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 hover:shadow-indigo-300 active:scale-95"
                     )}
                   >
-                    {isTranslating || isRendering ? (
+                    {isTranslating || (useOCR && isRendering) ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>{isRendering ? 'Đang vẽ...' : 'Đang dịch...'}</span>
+                        <span>{(useOCR && isRendering) ? 'Đang vẽ...' : 'Đang dịch...'}</span>
                       </>
                     ) : (
                       <>
@@ -1792,7 +1831,7 @@ export default function App() {
               <div className="flex-1 overflow-auto p-6 md:p-12 bg-white">
                 <AnimatePresence mode="wait">
                   {(!translations[currentPage] && (!activeTranslation || activeTranslation.page !== currentPage)) ? (
-                    (isRendering || isPdfLoading) ? (
+                    ((useOCR && isRendering) || isPdfLoading) ? (
                       <motion.div 
                         key="rendering"
                         initial={{ opacity: 0 }}
