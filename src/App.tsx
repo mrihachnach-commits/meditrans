@@ -256,7 +256,7 @@ export default function App() {
 
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [mobileViewMode, setMobileViewMode] = useState<'pdf' | 'translation'>('pdf');
-  const [autoTranslate, setAutoTranslate] = useState(false);
+  const [autoTranslate, setAutoTranslate] = useState(true);
   const [zoom, setZoom] = useState(0.82); // Default to 82% as requested
   const [isAutoFit, setIsAutoFit] = useState(true);
   
@@ -684,7 +684,7 @@ export default function App() {
     // If still rendering, we don't want to capture a half-rendered or old page
     if (isRenderingRef.current) {
       // Retry after a short delay
-      setTimeout(() => translateCurrentPage(targetPage, force), 200);
+      setTimeout(() => translateCurrentPage(targetPage, force), 50);
       return;
     }
     
@@ -965,7 +965,7 @@ export default function App() {
         if (!isRenderingRef.current && !translationsRef.current[currentPage]) {
           translateCurrentPage(currentPage);
         }
-      }, 400); // Reduced delay to prioritize current page
+      }, 100); // Reduced delay from 400ms to 100ms for faster startup
       return () => clearTimeout(timer);
     }
   }, [currentPage, pdfDoc, autoTranslate, isRendering, translations, translateCurrentPage]);
