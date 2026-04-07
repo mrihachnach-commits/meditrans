@@ -267,6 +267,10 @@ export default function App() {
   }, [selectedEngine, engineKeys]);
 
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const isFullScreenRef = useRef(false);
+  useEffect(() => {
+    isFullScreenRef.current = isFullScreen;
+  }, [isFullScreen]);
   const [mobileViewMode, setMobileViewMode] = useState<'pdf' | 'translation'>('pdf');
   const [autoTranslate, setAutoTranslate] = useState(false);
   const [zoom, setZoom] = useState(0.82); // Default to 82% as requested
@@ -1133,6 +1137,11 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullScreenRef.current) {
+        setIsFullScreen(false);
+        return;
+      }
+
       if (e.ctrlKey || e.metaKey) {
         if (e.key === '=' || e.key === '+') {
           e.preventDefault();
@@ -1342,7 +1351,8 @@ export default function App() {
     <ErrorBoundary>
       <div className={cn("h-screen flex flex-col bg-slate-50 overflow-hidden", isFullScreen && "fixed inset-0 z-50")}>
       {/* Header */}
-      <header className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4 shrink-0 shadow-sm z-30">
+      {!isFullScreen && (
+        <header className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4 shrink-0 shadow-sm z-30">
         <LogoWithText />
 
         <div className="flex items-center gap-2">
@@ -1428,6 +1438,7 @@ export default function App() {
           )}
         </div>
       </header>
+      )}
 
       {/* Main Content */}
       <main className="flex-1 flex overflow-hidden relative bg-slate-50">
@@ -1503,7 +1514,13 @@ export default function App() {
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] hidden lg:block">Original</span>
                     {isFullScreen && (
-                      <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-500 text-[8px] font-black rounded uppercase tracking-tighter border border-indigo-100">Focus</span>
+                      <button 
+                        onClick={() => setIsFullScreen(false)}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-indigo-600 text-white text-[10px] font-bold rounded-full hover:bg-indigo-700 transition-all shadow-sm ml-2"
+                      >
+                        <Minimize2 className="w-3 h-3" />
+                        <span>THOÁT FOCUS</span>
+                      </button>
                     )}
 
                     {/* Mobile Navigation */}
@@ -1633,7 +1650,8 @@ export default function App() {
               </div>
               <div 
                 className={cn(
-                  "flex-1 overflow-auto p-4 md:p-8 pdf-container relative bg-slate-100",
+                  "flex-1 overflow-auto pdf-container relative bg-slate-100",
+                  isFullScreen ? "p-0" : "p-4 md:p-8",
                   isPanning ? "cursor-grab select-none touch-none" : "cursor-auto"
                 )} 
                 ref={containerRef}
@@ -1641,7 +1659,10 @@ export default function App() {
                 onTouchStart={handleTouchStart}
               >
                 <div className="inline-block min-w-full text-center align-top">
-                  <div className="inline-block text-left relative my-8 shadow-2xl rounded-lg border border-slate-200 bg-white overflow-hidden shrink-0">
+                  <div className={cn(
+                    "inline-block text-left relative shadow-2xl bg-white overflow-hidden shrink-0 transition-all duration-300",
+                    isFullScreen ? "my-0 rounded-none border-none" : "my-8 rounded-lg border border-slate-200"
+                  )}>
                     {(isPdfLoading || isRendering) && (
                       <div className="absolute inset-0 flex items-center justify-center bg-slate-200/30 z-20">
                         <div className="flex flex-col items-center gap-2">

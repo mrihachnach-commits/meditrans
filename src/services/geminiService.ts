@@ -77,7 +77,9 @@ export class GeminiService implements TranslationService {
       - Giữ nguyên cấu trúc phân cấp (ví dụ: các mục con 1.1, 1.2 nên được thụt lề hoặc trình bày rõ ràng).
       - Đối với dấu chấm nối (leader dots), hãy dùng một lượng vừa đủ (khoảng 3-5 dấu) để tách biệt tên chương và số trang.
       - Đảm bảo số trang nằm ở cuối dòng của mỗi mục tương ứng.
-      - Nếu gặp các ký tự lặp lại liên tục trong ảnh, hãy xử lý thông minh, không được lặp lại chúng trong kết quả dịch.
+      - Nếu gặp các ký tự lặp lại liên tục trong ảnh (như hàng dài dấu chấm), hãy xử lý thông minh, CHỈ dùng tối đa 5 dấu chấm để phân tách.
+      - Trình bày đẹp mắt, dễ đọc, ưu tiên sử dụng định dạng: **Tên chương** ... Trang XX
+      - Nếu trang có nhiều dấu chấm (.) hoặc các ký tự lặp lại ở bất kỳ đâu, hãy rút gọn chúng, không được lặp lại quá 5 lần liên tiếp để tránh lỗi hiển thị.
     `;
 
     const prompt = `Dịch trang ${pageNumber} sang tiếng Việt.`;
@@ -195,7 +197,9 @@ export class GeminiService implements TranslationService {
       - Giữ nguyên cấu trúc phân cấp (ví dụ: các mục con 1.1, 1.2 nên được thụt lề hoặc trình bày rõ ràng).
       - Đối với dấu chấm nối (leader dots), hãy dùng một lượng vừa đủ (khoảng 3-5 dấu) để tách biệt tên chương và số trang.
       - Đảm bảo số trang nằm ở cuối dòng của mỗi mục tương ứng.
-      - Nếu gặp các ký tự lặp lại liên tục trong ảnh, hãy xử lý thông minh, không được lặp lại chúng trong kết quả dịch.
+      - Nếu gặp các ký tự lặp lại liên tục trong ảnh (như hàng dài dấu chấm), hãy xử lý thông minh, CHỈ dùng tối đa 5 dấu chấm để phân tách.
+      - Trình bày đẹp mắt, dễ đọc, ưu tiên sử dụng định dạng: **Tên chương** ... Trang XX
+      - Nếu trang có nhiều dấu chấm (.) hoặc các ký tự lặp lại ở bất kỳ đâu, hãy rút gọn chúng, không được lặp lại quá 5 lần liên tiếp để tránh lỗi hiển thị.
     `;
 
     const prompt = `Dịch trang ${pageNumber} sang tiếng Việt.`;
