@@ -77,22 +77,35 @@ export const MedicalDictionary: React.FC<MedicalDictionaryProps> = ({
 
   // Adjust position to keep it within viewport
   const adjustedPosition = {
-    left: Math.min(position.x, window.innerWidth - 350),
-    top: Math.min(position.y, window.innerHeight - 400)
+    left: Math.max(10, Math.min(position.x, window.innerWidth - 330)),
+    top: Math.max(10, Math.min(position.y, window.innerHeight - 410))
+  };
+
+  // On very small screens, center it
+  const isSmallScreen = typeof window !== 'undefined' && window.innerWidth < 640;
+  const finalStyle = isSmallScreen ? {
+    left: '50%',
+    top: '50%',
+    transform: 'translate(-50%, -50%)',
+    width: '90%',
+    maxWidth: '320px'
+  } : { 
+    left: adjustedPosition.left, 
+    top: adjustedPosition.top,
   };
 
   return (
     <AnimatePresence>
       <motion.div
         ref={containerRef}
-        initial={{ opacity: 0, scale: 0.9, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.9, y: 10 }}
-        className="fixed z-[100] w-[320px] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
-        style={{ 
-          left: adjustedPosition.left, 
-          top: adjustedPosition.top,
-        }}
+        initial={isSmallScreen ? { opacity: 0, scale: 0.9 } : { opacity: 0, scale: 0.9, y: 10 }}
+        animate={isSmallScreen ? { opacity: 1, scale: 1 } : { opacity: 1, scale: 1, y: 0 }}
+        exit={isSmallScreen ? { opacity: 0, scale: 0.9 } : { opacity: 0, scale: 0.9, y: 10 }}
+        className={cn(
+          "fixed z-[100] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden",
+          !isSmallScreen && "w-[320px]"
+        )}
+        style={finalStyle}
       >
         <div className="bg-indigo-600 px-4 py-3 flex items-center justify-between text-white">
           <div className="flex items-center gap-2">

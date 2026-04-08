@@ -44,7 +44,9 @@ import {
   Key,
   ShieldCheck,
   User as UserIcon,
-  Square
+  Square,
+  Check,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -1396,16 +1398,34 @@ export default function App() {
           }
         } catch (e) {}
 
-        // Increase limits to allow longer phrases or short sentences (up to 150 chars, 15 words)
+        // Relax limits to allow longer phrases or short sentences (up to 200 chars, 20 words)
         const wordCount = text.split(/\s+/).length;
-        if (text.length > 1 && text.length < 150 && !isNumeric && wordCount <= 15 && isSingleLine) {
+        // Allow slightly multi-line selections (up to 30px vertical difference)
+        if (text.length > 1 && text.length < 200 && !isNumeric && wordCount <= 20) {
           try {
             const range = selection?.getRangeAt(0);
             if (range) {
               const rect = range.getBoundingClientRect();
-              // Position relative to the viewport
-              setDictionaryPosition({ x: rect.left, y: rect.bottom + 10 });
-              setSelectedTerm(text);
+              
+              // Check if selection spans too many lines vertically
+              let verticalSpan = 0;
+              const rects = range.getClientRects();
+              if (rects.length > 1) {
+                let minTop = rects[0].top;
+                let maxTop = rects[0].top;
+                for (let i = 1; i < rects.length; i++) {
+                  minTop = Math.min(minTop, rects[i].top);
+                  maxTop = Math.max(maxTop, rects[i].top);
+                }
+                verticalSpan = maxTop - minTop;
+              }
+
+              // Only trigger if vertical span is reasonable (approx 2-3 lines max)
+              if (verticalSpan < 60) {
+                // Position relative to the viewport
+                setDictionaryPosition({ x: rect.left, y: rect.bottom + 10 });
+                setSelectedTerm(text);
+              }
             }
           } catch (err) {
             // Range might be invalid if selection changed rapidly
@@ -1419,6 +1439,23 @@ export default function App() {
     setEngineKeys(keys);
     localStorage.setItem('engine_keys', JSON.stringify(keys));
     setShowSettings(false);
+  };
+
+  const [copiedPage, setCopiedPage] = useState<number | null>(null);
+
+  const handleCopyTranslation = (content: string, pageNum: number) => {
+    navigator.clipboard.writeText(content);
+    setCopiedPage(pageNum);
+    setTimeout(() => setCopiedPage(null), 2000);
+  };
+
+  const clearAllTranslations = () => {
+    if (window.confirm("Bạn có chắc chắn muốn xóa tất cả bản dịch hiện tại không? Hành động này không thể hoàn tác.")) {
+      setTranslations({});
+      translationsRef.current = {};
+      setActiveTranslation(null);
+      setIsTranslating(false);
+    }
   };
 
   const [tempKeys, setTempKeys] = useState<Record<TranslationEngine, string>>(engineKeys);
@@ -1954,6 +1991,28 @@ export default function App() {
                       </>
                     )}
                   </button>
+
+                  {translations[currentPage]?.content && (
+                    <button 
+                      onClick={() => handleCopyTranslation(translations[currentPage].content, currentPage)}
+                      className={cn(
+                        "p-1.5 border rounded-lg transition-all flex items-center gap-1.5",
+                        copiedPage === currentPage 
+                          ? "bg-emerald-50 border-emerald-200 text-emerald-600" 
+                          : "bg-slate-50 border-slate-100 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                      )}
+                      title="Sao chép bản dịch"
+                    >
+                      {copiedPage === currentPage ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span className="text-[10px] font-bold">Đã chép!</span>
+                        </>
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
               
@@ -2123,33 +2182,33 @@ export default function App() {
 
       {/* Tablet Navigation Buttons */}
       {file && !showSettings && !showAuthModal && (
-        <div className="fixed bottom-8 left-0 right-0 pointer-events-none z-40 flex justify-between px-6 md:px-12">
+        <div className="fixed bottom-6 md:bottom-8 left-0 right-0 pointer-events-none z-40 flex justify-between px-4 md:px-12">
           <button 
             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
             disabled={currentPage === 1 || isPdfLoading || isRendering}
             className={cn(
-              "pointer-events-auto w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition-all active:scale-90 border backdrop-blur-sm",
+              "pointer-events-auto w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center shadow-2xl transition-all active:scale-90 border backdrop-blur-sm",
               (currentPage === 1 || isPdfLoading || isRendering)
                 ? "bg-slate-50/80 text-slate-200 border-slate-100 cursor-not-allowed" 
                 : "bg-white/90 text-indigo-600 hover:bg-indigo-50 border-indigo-100 hover:shadow-indigo-100"
             )}
             title="Trang trước"
           >
-            <ChevronLeft className="w-8 h-8" />
+            <ChevronLeft className="w-6 h-6 md:w-8 md:h-8" />
           </button>
           
           <button 
             onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))}
             disabled={currentPage === numPages || isPdfLoading || isRendering}
             className={cn(
-              "pointer-events-auto w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition-all active:scale-90 border backdrop-blur-sm",
+              "pointer-events-auto w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center shadow-2xl transition-all active:scale-90 border backdrop-blur-sm",
               (currentPage === numPages || isPdfLoading || isRendering)
                 ? "bg-slate-50/80 text-slate-200 border-slate-100 cursor-not-allowed" 
                 : "bg-indigo-600/90 text-white hover:bg-indigo-700 border-indigo-500 shadow-indigo-200 hover:shadow-indigo-300"
             )}
             title="Trang tiếp theo"
           >
-            <ChevronRight className="w-8 h-8" />
+            <ChevronRight className="w-6 h-6 md:w-8 md:h-8" />
           </button>
         </div>
       )}
@@ -2643,6 +2702,23 @@ export default function App() {
                         </div>
                       </div>
                     )}
+                  </div>
+                  
+                  <div className="pt-6 border-t border-slate-100 mb-4">
+                    <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2">
+                      <Trash2 className="w-4 h-4 text-rose-500" />
+                      Quản lý dữ liệu
+                    </h3>
+                    <p className="text-[10px] text-slate-500 mb-3">
+                      Xóa tất cả các bản dịch đã lưu trong phiên làm việc hiện tại.
+                    </p>
+                    <button 
+                      onClick={clearAllTranslations}
+                      className="w-full py-2 bg-rose-50 text-rose-600 rounded-xl text-xs font-bold hover:bg-rose-100 transition-all border border-rose-100 flex items-center justify-center gap-2"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Xóa tất cả bản dịch
+                    </button>
                   </div>
                   
                   <div className="pt-4 flex gap-3">
