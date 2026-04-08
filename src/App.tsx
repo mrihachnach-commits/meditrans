@@ -1612,7 +1612,7 @@ export default function App() {
             {/* Left Side: Original PDF */}
             <div className={cn(
               "flex flex-col bg-slate-100 overflow-hidden border-r border-slate-200 transition-all duration-300 ease-in-out relative",
-              (isFullScreen || !showTranslationPanel) ? "w-full" : "w-full md:w-1/2",
+              isFullScreen ? "w-1/2" : (showTranslationPanel ? "w-full md:w-1/2" : "w-full"),
               mobileViewMode === 'pdf' ? "flex h-full" : "hidden md:flex"
             )}>
               <div className="h-11 bg-white border-b border-slate-200 flex items-center justify-between px-3 shrink-0 z-20 shadow-sm overflow-x-auto no-scrollbar">
@@ -1823,8 +1823,7 @@ export default function App() {
               exit={{ x: 300, opacity: 0 }}
               className={cn(
                 "flex flex-col bg-white overflow-hidden transition-all duration-300",
-                isFullScreen ? "hidden" : "w-full md:w-1/2",
-                mobileViewMode === 'translation' ? "flex h-full" : (showTranslationPanel ? "hidden md:flex" : "hidden")
+                isFullScreen ? "flex w-1/2" : (mobileViewMode === 'translation' ? "flex h-full" : (showTranslationPanel ? "hidden md:flex w-1/2" : "hidden"))
               )}
             >
               <div className="h-11 border-b border-slate-200 flex items-center justify-between px-3 shrink-0 z-20 shadow-sm overflow-x-auto no-scrollbar">
