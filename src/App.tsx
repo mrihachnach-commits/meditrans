@@ -616,14 +616,33 @@ export default function App() {
     
     if (!selectedFile) return;
 
+    // Check file size (200MB limit)
+    if (selectedFile.size > 200 * 1024 * 1024) {
+      setUploadError("File quá lớn. Vui lòng chọn file dưới 200MB.");
+      setTimeout(() => setUploadError(null), 5000);
+      return;
+    }
+
     const isPdf = selectedFile.type === 'application/pdf' || 
                   selectedFile.type === 'application/x-pdf' ||
                   selectedFile.name.toLowerCase().endsWith('.pdf');
     
     if (isPdf) {
+      setIsPdfLoading(true);
+      setPdfError(null);
+      
+      // Small delay to allow UI to update and browser to settle after file picker
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       // Clear previous
       if (fileUrl) URL.revokeObjectURL(fileUrl);
-      if (pdfDoc) await pdfDoc.destroy();
+      if (pdfDoc) {
+        try {
+          await pdfDoc.destroy();
+        } catch (e) {
+          console.warn("Error destroying previous PDF:", e);
+        }
+      }
 
       // Increment fileId to invalidate all pending translations for the previous file
       fileIdRef.current += 1;
@@ -643,17 +662,19 @@ export default function App() {
       setCurrentPage(1);
       setCurrentJob(1);
       setAutoTranslate(false);
-      setIsPdfLoading(true);
-      setPdfError(null);
       
       try {
-        // Use URL.createObjectURL for memory efficiency - browser handles the file access
+        // For iOS Chrome/Safari stability, we'll try loading via ArrayBuffer if Blob URL fails
+        // but first try the efficient Blob URL method
         const url = URL.createObjectURL(selectedFile);
         setFileUrl(url);
         
+        console.log(`[MediTrans AI] Loading PDF: ${selectedFile.name} (${Math.round(selectedFile.size / 1024)} KB)`);
+
         const loadingTask = pdfjs.getDocument({
           url,
-          cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
+          // Use jsDelivr for cmaps as well for better reliability in Asia
+          cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/cmaps/`,
           cMapPacked: true,
           disableAutoFetch: false,
           disableStream: false,
@@ -662,9 +683,24 @@ export default function App() {
         const pdf = await loadingTask.promise;
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
-      } catch (error) {
-        console.error("Error loading PDF:", error);
-        setPdfError("Không thể tải file PDF. Vui lòng thử lại.");
+      } catch (error: any) {
+        console.error("Error loading PDF with Blob URL, trying ArrayBuffer fallback:", error);
+        
+        try {
+          // Fallback: Read as ArrayBuffer (more stable on some mobile browsers)
+          const arrayBuffer = await selectedFile.arrayBuffer();
+          const loadingTask = pdfjs.getDocument({
+            data: arrayBuffer,
+            cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/cmaps/`,
+            cMapPacked: true,
+          });
+          const pdf = await loadingTask.promise;
+          setPdfDoc(pdf);
+          setNumPages(pdf.numPages);
+        } catch (fallbackError: any) {
+          console.error("Final PDF loading error:", fallbackError);
+          setPdfError(`Không thể tải file PDF: ${fallbackError.message || "Lỗi không xác định"}`);
+        }
       } finally {
         setIsPdfLoading(false);
       }
@@ -1600,19 +1636,39 @@ export default function App() {
                   <p className="text-slate-500 mb-8">Hỗ trợ file PDF lên tới 200MB. Dịch thuật chuyên sâu giữ nguyên định dạng.</p>
                   
                   <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full py-4 bg-indigo-600 text-white rounded-full font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2 mb-2"
+                    onClick={() => {
+                      if (fileInputRef.current) {
+                        fileInputRef.current.click();
+                      }
+                    }}
+                    disabled={isPdfLoading}
+                    className={cn(
+                      "w-full py-4 rounded-full font-bold shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 mb-2",
+                      isPdfLoading 
+                        ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none" 
+                        : "bg-indigo-600 text-white shadow-indigo-100 hover:bg-indigo-700"
+                    )}
                   >
-                    <Upload className="w-5 h-5" />
-                    <span>Chọn file PDF</span>
+                    {isPdfLoading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <span>Đang xử lý file...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-5 h-5" />
+                        <span>Chọn file PDF</span>
+                      </>
+                    )}
                   </button>
                   
                   <input 
                     ref={fileInputRef}
                     type="file" 
-                    accept="application/pdf,.pdf" 
+                    accept=".pdf,application/pdf" 
                     onChange={handleFileChange}
                     className="hidden"
+                    title="Tải lên PDF"
                   />
 
                   {uploadError && (
