@@ -33,8 +33,21 @@ import { MedicalDictionary } from './components/MedicalDictionary';
 import { Logo, LogoWithText } from './components/Logo';
 
 // Use a reliable CDN for the worker that matches the installed version exactly
-// jsDelivr is often faster and more reliable in Vietnam/Asia than unpkg
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+// We load the worker via fetch and create a Blob URL to bypass cross-origin worker restrictions on some mobile browsers
+const loadWorker = async () => {
+  const workerUrl = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/legacy/build/pdf.worker.min.js`;
+  try {
+    const response = await fetch(workerUrl);
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    pdfjs.GlobalWorkerOptions.workerSrc = blobUrl;
+    console.log("[MediTrans AI] PDF Worker loaded successfully via Blob URL");
+  } catch (error) {
+    console.error("[MediTrans AI] Failed to load PDF Worker via Blob, falling back to direct URL:", error);
+    pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+  }
+};
+loadWorker();
 
 import { 
   Upload, 
