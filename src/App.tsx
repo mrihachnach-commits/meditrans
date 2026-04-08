@@ -779,6 +779,8 @@ export default function App() {
             textLayerDiv.style.height = `${textViewport.height}px`;
             textLayerDiv.style.left = '0';
             textLayerDiv.style.top = '0';
+            // Required for PDF.js 3.x text layer rendering
+            textLayerDiv.style.setProperty('--scale-factor', textViewport.scale.toString());
             
             await (pdfjs as any).renderTextLayer({
               textContent: textContent,
