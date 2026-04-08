@@ -268,10 +268,34 @@ export default function App() {
 
   const [isFullScreen, setIsFullScreen] = useState(false);
   const isFullScreenRef = useRef(false);
+
+  const toggleFullScreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        }
+      }
+    } catch (err) {
+      console.error(`Error attempting to enable full-screen mode: ${err}`);
+      // Fallback to internal state if native fails (e.g. in some iframe environments)
+      setIsFullScreen(!isFullScreen);
+    }
+  };
+
   useEffect(() => {
-    isFullScreenRef.current = isFullScreen;
-    if (isFullScreen) setSelectedTerm(null);
-  }, [isFullScreen]);
+    const handleFullScreenChange = () => {
+      const isNativeFull = !!document.fullscreenElement;
+      setIsFullScreen(isNativeFull);
+      isFullScreenRef.current = isNativeFull;
+      if (isNativeFull) setSelectedTerm(null);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullScreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullScreenChange);
+  }, []);
   const [showTranslationPanel, setShowTranslationPanel] = useState(false);
   const [mobileViewMode, setMobileViewMode] = useState<'pdf' | 'translation'>('pdf');
   const [autoTranslate, setAutoTranslate] = useState(false);
@@ -1178,7 +1202,11 @@ export default function App() {
   useEffect(() => {
     handleKeyDownRef.current = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullScreenRef.current) {
-        setIsFullScreen(false);
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => setIsFullScreen(false));
+        } else {
+          setIsFullScreen(false);
+        }
         return;
       }
 
@@ -1463,12 +1491,12 @@ export default function App() {
           </button>
           
           <button 
-            onClick={() => setIsFullScreen(!isFullScreen)}
+            onClick={toggleFullScreen}
             className={cn(
               "p-2 rounded-full transition-all",
               isFullScreen ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" : "hover:bg-slate-100 text-slate-500"
             )}
-            title={isFullScreen ? "Thoát chế độ tập trung" : "Chế độ tập trung"}
+            title={isFullScreen ? "Thoát toàn màn hình" : "Toàn màn hình (F11)"}
           >
             {isFullScreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
@@ -1593,11 +1621,11 @@ export default function App() {
                     <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] hidden lg:block">Original</span>
                     {isFullScreen && (
                       <button 
-                        onClick={() => setIsFullScreen(false)}
+                        onClick={toggleFullScreen}
                         className="flex items-center gap-1 px-2 py-0.5 bg-indigo-600 text-white text-[10px] font-bold rounded-full hover:bg-indigo-700 transition-all shadow-sm ml-2"
                       >
                         <Minimize2 className="w-3 h-3" />
-                        <span>THOÁT FOCUS</span>
+                        <span>THOÁT TOÀN MÀN HÌNH</span>
                       </button>
                     )}
 
