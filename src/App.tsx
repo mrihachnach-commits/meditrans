@@ -4,6 +4,27 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+
+// Polyfill for Promise.withResolvers (required for pdfjs-dist 4.0+ on older browsers/iOS < 17.4)
+if (typeof (Promise as any).withResolvers === 'undefined') {
+  (Promise as any).withResolvers = function() {
+    let resolve, reject;
+    const promise = new Promise((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+}
+
+// Polyfill for structuredClone (required for newer pdfjs-dist on older browsers)
+if (typeof (window as any).structuredClone === 'undefined') {
+  (window as any).structuredClone = function(obj: any) {
+    if (obj === undefined) return undefined;
+    return JSON.parse(JSON.stringify(obj));
+  };
+}
+
 import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
@@ -13,7 +34,7 @@ import { Logo, LogoWithText } from './components/Logo';
 
 // Use a reliable CDN for the worker that matches the installed version exactly
 // jsDelivr is often faster and more reliable in Vietnam/Asia than unpkg
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
 
 import { 
   Upload, 
