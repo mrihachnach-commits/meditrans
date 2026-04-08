@@ -2094,6 +2094,39 @@ export default function App() {
         )}
       </main>
 
+      {/* Tablet Navigation Buttons */}
+      {file && !showSettings && !showAuthModal && (
+        <div className="fixed bottom-8 left-0 right-0 pointer-events-none z-40 flex justify-between px-6 md:px-12">
+          <button 
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1 || isPdfLoading || isRendering}
+            className={cn(
+              "pointer-events-auto w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition-all active:scale-90 border backdrop-blur-sm",
+              (currentPage === 1 || isPdfLoading || isRendering)
+                ? "bg-slate-50/80 text-slate-200 border-slate-100 cursor-not-allowed" 
+                : "bg-white/90 text-indigo-600 hover:bg-indigo-50 border-indigo-100 hover:shadow-indigo-100"
+            )}
+            title="Trang trước"
+          >
+            <ChevronLeft className="w-8 h-8" />
+          </button>
+          
+          <button 
+            onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))}
+            disabled={currentPage === numPages || isPdfLoading || isRendering}
+            className={cn(
+              "pointer-events-auto w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition-all active:scale-90 border backdrop-blur-sm",
+              (currentPage === numPages || isPdfLoading || isRendering)
+                ? "bg-slate-50/80 text-slate-200 border-slate-100 cursor-not-allowed" 
+                : "bg-indigo-600/90 text-white hover:bg-indigo-700 border-indigo-500 shadow-indigo-200 hover:shadow-indigo-300"
+            )}
+            title="Trang tiếp theo"
+          >
+            <ChevronRight className="w-8 h-8" />
+          </button>
+        </div>
+      )}
+
       {/* Dictionary Pop-up */}
       {selectedTerm && (
         <MedicalDictionary 
