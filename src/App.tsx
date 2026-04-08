@@ -38,10 +38,12 @@ const loadWorker = async () => {
   const workerUrl = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/legacy/build/pdf.worker.min.js`;
   try {
     const response = await fetch(workerUrl);
-    const blob = await response.blob();
+    const scriptText = await response.text();
+    // Explicitly set the MIME type to application/javascript to satisfy strict browser checks (especially on iOS)
+    const blob = new Blob([scriptText], { type: 'application/javascript' });
     const blobUrl = URL.createObjectURL(blob);
     pdfjs.GlobalWorkerOptions.workerSrc = blobUrl;
-    console.log("[MediTrans AI] PDF Worker loaded successfully via Blob URL");
+    console.log("[MediTrans AI] PDF Worker loaded successfully via Blob URL with explicit MIME type");
   } catch (error) {
     console.error("[MediTrans AI] Failed to load PDF Worker via Blob, falling back to direct URL:", error);
     pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
