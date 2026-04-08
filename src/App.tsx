@@ -270,19 +270,23 @@ export default function App() {
   const isFullScreenRef = useRef(false);
   useEffect(() => {
     isFullScreenRef.current = isFullScreen;
+    if (isFullScreen) setSelectedTerm(null);
   }, [isFullScreen]);
+  const [showTranslationPanel, setShowTranslationPanel] = useState(false);
   const [mobileViewMode, setMobileViewMode] = useState<'pdf' | 'translation'>('pdf');
   const [autoTranslate, setAutoTranslate] = useState(false);
   const [zoom, setZoom] = useState(0.82); // Default to 82% as requested
   const [isAutoFit, setIsAutoFit] = useState(true);
   
   const [isPanning, setIsPanning] = useState(false);
+  const [isLookupEnabled, setIsLookupEnabled] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const isRenderingRef = useRef(false);
+  const renderRequestIdRef = useRef(0);
   const [pdfError, setPdfError] = useState<string | null>(null);
   
   const [fontSize, setFontSize] = useState(14);
@@ -647,17 +651,39 @@ export default function App() {
   const renderPage = useCallback(async (pageNum: number) => {
     if (!pdfDoc || !canvasRef.current || !textLayerRef.current) return;
 
+    // Bounds check to prevent "Invalid page request"
+    if (pageNum < 1 || pageNum > pdfDoc.numPages) {
+      console.warn(`[MediTrans AI] Invalid page request: ${pageNum}. Document has ${pdfDoc.numPages} pages.`);
+      return;
+    }
+
+    const requestId = ++renderRequestIdRef.current;
+
     setIsRendering(true);
     isRenderingRef.current = true;
+
+    // Ensure previous render task is cancelled AND finished before starting a new one
+    // This prevents "Cannot use the same canvas during multiple render() operations"
     if (renderTaskRef.current) {
       renderTaskRef.current.cancel();
+      try {
+        // Wait for the previous task to actually stop
+        await renderTaskRef.current.promise;
+      } catch (e) {
+        // Ignore cancellation errors
+      }
+    }
+
+    // Check if a newer request has come in while we were waiting for cancellation
+    if (requestId !== renderRequestIdRef.current) {
+      return;
     }
 
     try {
       const page = await pdfDoc.getPage(pageNum);
       const viewport = page.getViewport({ scale: zoom * 2 });
       const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
+      const context = canvas.getContext('2d', { alpha: false }); // Optimization: disable alpha if not needed
 
       if (context) {
         canvas.height = viewport.height;
@@ -672,29 +698,33 @@ export default function App() {
         renderTaskRef.current = renderTask;
         await renderTask.promise;
         
-        // Signal that visual rendering is done so translation can start immediately
-        setIsRendering(false);
-        isRenderingRef.current = false;
-        
-        // Render text layer in the background
-        const textContent = await page.getTextContent();
-        const textLayerDiv = textLayerRef.current;
-        if (textLayerDiv) {
-          textLayerDiv.innerHTML = '';
+        // Only update state if this is still the current request
+        if (requestId === renderRequestIdRef.current) {
+          // Signal that visual rendering is done so translation can start immediately
+          setIsRendering(false);
+          isRenderingRef.current = false;
+          renderTaskRef.current = null;
           
-          // Use the same scale as the visual representation
-          const textViewport = page.getViewport({ scale: zoom });
-          textLayerDiv.style.width = `${textViewport.width}px`;
-          textLayerDiv.style.height = `${textViewport.height}px`;
-          textLayerDiv.style.left = '0';
-          textLayerDiv.style.top = '0';
-          
-          const textLayer = new pdfjs.TextLayer({
-            textContentSource: textContent,
-            container: textLayerDiv,
-            viewport: textViewport,
-          });
-          await textLayer.render();
+          // Render text layer in the background
+          const textContent = await page.getTextContent();
+          const textLayerDiv = textLayerRef.current;
+          if (textLayerDiv) {
+            textLayerDiv.innerHTML = '';
+            
+            // Use the same scale as the visual representation
+            const textViewport = page.getViewport({ scale: zoom });
+            textLayerDiv.style.width = `${textViewport.width}px`;
+            textLayerDiv.style.height = `${textViewport.height}px`;
+            textLayerDiv.style.left = '0';
+            textLayerDiv.style.top = '0';
+            
+            const textLayer = new pdfjs.TextLayer({
+              textContentSource: textContent,
+              container: textLayerDiv,
+              viewport: textViewport,
+            });
+            await textLayer.render();
+          }
         }
 
         // Crucial for memory: cleanup page resources
@@ -704,18 +734,26 @@ export default function App() {
       if (error.name !== 'RenderingCancelledException') {
         console.error("Error rendering page:", error);
       }
-      setIsRendering(false);
-      isRenderingRef.current = false;
+      
+      if (requestId === renderRequestIdRef.current) {
+        setIsRendering(false);
+        isRenderingRef.current = false;
+        renderTaskRef.current = null;
+      }
     }
   }, [pdfDoc, zoom]);
 
   const fitToWidth = async () => {
     if (!pdfDoc || !containerRef.current) return;
     
+    // Use the current page from the doc to be safe
+    const pageToFit = currentPage;
+    if (pageToFit < 1 || pageToFit > pdfDoc.numPages) return;
+
     requestAnimationFrame(async () => {
       if (!pdfDoc || !containerRef.current) return;
       try {
-        const page = await pdfDoc.getPage(currentPage);
+        const page = await pdfDoc.getPage(pageToFit);
         const viewport = page.getViewport({ scale: 1 });
         const rect = containerRef.current.getBoundingClientRect();
         const containerWidth = rect.width - 64;
@@ -1135,8 +1173,10 @@ export default function App() {
     }
   }, [pdfDoc, currentPage, renderPage]);
 
+  const handleKeyDownRef = useRef<(e: KeyboardEvent) => void>(null);
+  
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    handleKeyDownRef.current = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullScreenRef.current) {
         setIsFullScreen(false);
         return;
@@ -1155,6 +1195,26 @@ export default function App() {
           e.preventDefault();
           fitToWidthAction();
         }
+      } else {
+        // Arrow keys for navigation (only if not typing in an input)
+        const activeElement = document.activeElement;
+        const isTyping = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA' || (activeElement as HTMLElement)?.isContentEditable;
+        
+        if (!isTyping) {
+          if (e.key === 'ArrowLeft') {
+            setCurrentPage(p => Math.max(1, p - 1));
+          } else if (e.key === 'ArrowRight') {
+            setCurrentPage(p => Math.min(numPages, p + 1));
+          }
+        }
+      }
+    };
+  }, [numPages, fitToWidthAction]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (handleKeyDownRef.current) {
+        handleKeyDownRef.current(e);
       }
     };
 
@@ -1261,6 +1321,9 @@ export default function App() {
 
   const handleMouseUp = (e: React.MouseEvent) => {
     // Handle text selection for dictionary
+    // Only trigger if lookup is enabled, translation panel is open and NOT in full screen mode
+    if (!isLookupEnabled || !showTranslationPanel || isFullScreen) return;
+
     // Use a small timeout to ensure the selection is fully captured by the browser
     setTimeout(() => {
       const selection = window.getSelection();
@@ -1382,6 +1445,21 @@ export default function App() {
             title="Cài đặt API Key"
           >
             <Settings className="w-4 h-4" />
+          </button>
+
+          <button 
+            onClick={() => {
+              const nextState = !showTranslationPanel;
+              setShowTranslationPanel(nextState);
+              if (!nextState) setSelectedTerm(null);
+            }}
+            className={cn(
+              "p-2 rounded-full transition-all",
+              showTranslationPanel ? "bg-indigo-50 text-indigo-600 shadow-sm" : "hover:bg-slate-100 text-slate-500"
+            )}
+            title={showTranslationPanel ? "Đóng Tra cứu & Dịch thuật" : "Mở Tra cứu & Dịch thuật"}
+          >
+            <Languages className="w-4 h-4" />
           </button>
           
           <button 
@@ -1506,7 +1584,7 @@ export default function App() {
             {/* Left Side: Original PDF */}
             <div className={cn(
               "flex flex-col bg-slate-100 overflow-hidden border-r border-slate-200 transition-all duration-300 ease-in-out relative",
-              isFullScreen ? "w-full" : "w-full md:w-1/2",
+              (isFullScreen || !showTranslationPanel) ? "w-full" : "w-full md:w-1/2",
               mobileViewMode === 'pdf' ? "flex h-full" : "hidden md:flex"
             )}>
               <div className="h-11 bg-white border-b border-slate-200 flex items-center justify-between px-3 shrink-0 z-20 shadow-sm overflow-x-auto no-scrollbar">
@@ -1616,6 +1694,21 @@ export default function App() {
                     <div className="w-px h-3 bg-slate-200 mx-0.5" />
                     <button 
                       onClick={() => {
+                        const nextState = !isLookupEnabled;
+                        setIsLookupEnabled(nextState);
+                        if (!nextState) setSelectedTerm(null);
+                      }}
+                      className={cn(
+                        "p-1.5 rounded transition-all",
+                        isLookupEnabled ? "bg-indigo-600 text-white shadow-md" : "hover:bg-white text-slate-500"
+                      )}
+                      title={isLookupEnabled ? "Tắt Tra cứu nhanh" : "Bật Tra cứu nhanh (Bôi đen để dịch)"}
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="w-px h-3 bg-slate-200 mx-0.5" />
+                    <button 
+                      onClick={() => {
                         setIsAutoFit(false);
                         setZoom(z => Math.max(0.5, z - 0.1));
                       }} 
@@ -1703,7 +1796,7 @@ export default function App() {
               className={cn(
                 "flex flex-col bg-white overflow-hidden transition-all duration-300",
                 isFullScreen ? "hidden" : "w-full md:w-1/2",
-                mobileViewMode === 'translation' ? "flex h-full" : "hidden md:flex"
+                mobileViewMode === 'translation' ? "flex h-full" : (showTranslationPanel ? "hidden md:flex" : "hidden")
               )}
             >
               <div className="h-11 border-b border-slate-200 flex items-center justify-between px-3 shrink-0 z-20 shadow-sm overflow-x-auto no-scrollbar">
