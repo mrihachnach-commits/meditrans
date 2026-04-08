@@ -4,27 +4,6 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-
-// Polyfill for Promise.withResolvers (required for pdfjs-dist 4.0+ on older browsers/iOS < 17.4)
-if (typeof (Promise as any).withResolvers === 'undefined') {
-  (Promise as any).withResolvers = function() {
-    let resolve, reject;
-    const promise = new Promise((res, rej) => {
-      resolve = res;
-      reject = rej;
-    });
-    return { promise, resolve, reject };
-  };
-}
-
-// Polyfill for structuredClone (required for newer pdfjs-dist on older browsers)
-if (typeof (window as any).structuredClone === 'undefined') {
-  (window as any).structuredClone = function(obj: any) {
-    if (obj === undefined) return undefined;
-    return JSON.parse(JSON.stringify(obj));
-  };
-}
-
 import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PDFDocument } from 'pdf-lib';
@@ -33,23 +12,8 @@ import { MedicalDictionary } from './components/MedicalDictionary';
 import { Logo, LogoWithText } from './components/Logo';
 
 // Use a reliable CDN for the worker that matches the installed version exactly
-// We load the worker via fetch and create a Blob URL to bypass cross-origin worker restrictions on some mobile browsers
-const loadWorker = async () => {
-  const workerUrl = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/legacy/build/pdf.worker.min.js`;
-  try {
-    const response = await fetch(workerUrl);
-    const scriptText = await response.text();
-    // Explicitly set the MIME type to application/javascript to satisfy strict browser checks (especially on iOS)
-    const blob = new Blob([scriptText], { type: 'application/javascript' });
-    const blobUrl = URL.createObjectURL(blob);
-    pdfjs.GlobalWorkerOptions.workerSrc = blobUrl;
-    console.log("[MediTrans AI] PDF Worker loaded successfully via Blob URL with explicit MIME type");
-  } catch (error) {
-    console.error("[MediTrans AI] Failed to load PDF Worker via Blob, falling back to direct URL:", error);
-    pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-  }
-};
-loadWorker();
+// We use version 3.11.174 for maximum compatibility with mobile browsers
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js`;
 
 import { 
   Upload, 
@@ -709,8 +673,8 @@ export default function App() {
 
         const loadingTask = pdfjs.getDocument({
           url,
-          // Use jsDelivr for cmaps as well for better reliability in Asia
-          cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/cmaps/`,
+          // Use unpkg for cmaps as well for consistency with worker
+          cMapUrl: `https://unpkg.com/pdfjs-dist@3.11.174/cmaps/`,
           cMapPacked: true,
           disableAutoFetch: false,
           disableStream: false,
@@ -727,7 +691,7 @@ export default function App() {
           const arrayBuffer = await selectedFile.arrayBuffer();
           const loadingTask = pdfjs.getDocument({
             data: arrayBuffer,
-            cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/cmaps/`,
+            cMapUrl: `https://unpkg.com/pdfjs-dist@3.11.174/cmaps/`,
             cMapPacked: true,
           });
           const pdf = await loadingTask.promise;
@@ -816,12 +780,12 @@ export default function App() {
             textLayerDiv.style.left = '0';
             textLayerDiv.style.top = '0';
             
-            const textLayer = new pdfjs.TextLayer({
-              textContentSource: textContent,
+            await (pdfjs as any).renderTextLayer({
+              textContent: textContent,
               container: textLayerDiv,
               viewport: textViewport,
-            });
-            await textLayer.render();
+              textDivs: []
+            }).promise;
           }
         }
 
