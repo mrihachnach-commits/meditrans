@@ -366,6 +366,19 @@ export default function App() {
       const testService = new GeminiService(key, "gemini-3.1-flash-lite-preview");
       const results = await testService.checkAvailableKeys();
       
+      // Update Firestore if it's a vault key
+      if (user && selectedKeyId && isVaultKey) {
+        const path = `apiKeys/${selectedKeyId}`;
+        try {
+          await updateDoc(doc(db, 'apiKeys', selectedKeyId), {
+            lastUsed: serverTimestamp(),
+            status: results.manualKey ? 'active' : 'error'
+          });
+        } catch (error) {
+          console.error("Failed to update key status in Firestore:", error);
+        }
+      }
+
       // If we used a vault key, map manualKey result to vault info
       setKeyCheckResults({
         ...results,
@@ -3006,6 +3019,14 @@ export default function App() {
                                 >
                                   <div className="flex items-center gap-2 mb-0.5">
                                     <span className="text-xs font-bold text-slate-700">{key.name}</span>
+                                    {key.status && (
+                                      <span className={cn(
+                                        "text-[8px] px-1.5 py-0.5 rounded-full font-black uppercase tracking-tighter",
+                                        key.status === 'active' ? "bg-emerald-100 text-emerald-600" : "bg-rose-100 text-rose-600"
+                                      )}>
+                                        {key.status === 'active' ? 'Hoạt động' : 'Lỗi'}
+                                      </span>
+                                    )}
                                   </div>
                                   <p className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]">
                                     {key.value.substring(0, 8)}••••••••{key.value.substring(key.value.length - 4)}
