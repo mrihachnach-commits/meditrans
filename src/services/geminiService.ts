@@ -61,8 +61,8 @@ export class GeminiService implements TranslationService {
         const ai = new GoogleGenAI({ apiKey: envKey });
         // Simple validation call
         await ai.models.generateContent({
-          model: "gemini-1.5-flash",
-          contents: "test"
+          model: "gemini-3-flash-preview",
+          contents: "hi"
         });
         results.envKey = true;
       } catch (e) {
@@ -74,8 +74,8 @@ export class GeminiService implements TranslationService {
       try {
         const ai = new GoogleGenAI({ apiKey: manualKey });
         await ai.models.generateContent({
-          model: "gemini-1.5-flash",
-          contents: "test"
+          model: "gemini-3-flash-preview",
+          contents: "hi"
         });
         results.manualKey = true;
       } catch (e) {

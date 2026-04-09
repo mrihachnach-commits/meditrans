@@ -334,25 +334,46 @@ export default function App() {
   const [newKey, setNewKey] = useState({ name: '', value: '', engine: 'gemini' });
   const [keyToDelete, setKeyToDelete] = useState<any | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [keyCheckResults, setKeyCheckResults] = useState<{ envKey: boolean; manualKey: boolean; envKeyName?: string } | null>(null);
+  const [keyCheckResults, setKeyCheckResults] = useState<{ 
+    envKey: boolean; 
+    manualKey: boolean; 
+    envKeyName?: string;
+    isVaultKey?: boolean;
+    vaultKeyName?: string;
+  } | null>(null);
   const [isCheckingKeys, setIsCheckingKeys] = useState(false);
+
+  const [hasDoneInitialCheck, setHasDoneInitialCheck] = useState(false);
 
   const performKeyCheck = async () => {
     setIsCheckingKeys(true);
     try {
       // Get the current key that would be used
       let key = engineKeys[selectedEngine];
-      if (user && selectedKeyId) {
+      let isVaultKey = false;
+      let vaultKeyName = '';
+
+      if (user && selectedKeyId && userKeys.length > 0) {
         const vaultKey = userKeys.find(k => k.id === selectedKeyId);
         const currentEngineType = selectedEngine.startsWith('gemini') ? 'gemini' : selectedEngine;
         if (vaultKey && vaultKey.engine === currentEngineType) {
           key = vaultKey.value;
+          isVaultKey = true;
+          vaultKeyName = vaultKey.name;
         }
       }
 
       const testService = new GeminiService(key, "gemini-3.1-flash-lite-preview");
       const results = await testService.checkAvailableKeys();
-      setKeyCheckResults(results);
+      
+      // If we used a vault key, map manualKey result to vault info
+      setKeyCheckResults({
+        ...results,
+        isVaultKey,
+        vaultKeyName
+      });
+      
+      setHasDoneInitialCheck(true);
       // Auto-hide after 10 seconds
       setTimeout(() => setKeyCheckResults(null), 10000);
     } catch (e) {
@@ -393,10 +414,13 @@ export default function App() {
 
   // Perform key check when user logs in and keys are loaded
   useEffect(() => {
-    if (user && isAuthReady) {
-      performKeyCheck();
+    if (user && isAuthReady && !hasDoneInitialCheck) {
+      // If user is logged in, wait for keys to load before checking
+      if (userKeys.length > 0 || !selectedKeyId) {
+        performKeyCheck();
+      }
     }
-  }, [user, isAuthReady]);
+  }, [user, isAuthReady, userKeys, selectedKeyId, hasDoneInitialCheck]);
 
   useEffect(() => {
     if (user) {
@@ -1740,13 +1764,19 @@ export default function App() {
                   )}
                 </div>
 
-                {keyCheckResults.manualKey && (
+                {(keyCheckResults.manualKey || keyCheckResults.isVaultKey) && (
                   <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
                     <div className="flex items-center gap-3">
-                      <Key className="w-4 h-4 text-emerald-500" />
-                      <span className="text-xs font-bold text-slate-700">Key Thủ công (Manual)</span>
+                      <Key className={cn("w-4 h-4", (keyCheckResults.manualKey) ? "text-emerald-500" : "text-slate-300")} />
+                      <span className="text-xs font-bold text-slate-700">
+                        {keyCheckResults.isVaultKey ? `Key từ Vault (${keyCheckResults.vaultKeyName})` : 'Key Thủ công (Manual)'}
+                      </span>
                     </div>
-                    <span className="px-2 py-1 bg-emerald-100 text-emerald-600 text-[10px] font-black rounded-lg uppercase tracking-tighter">Kết nối thành công</span>
+                    {keyCheckResults.manualKey ? (
+                      <span className="px-2 py-1 bg-emerald-100 text-emerald-600 text-[10px] font-black rounded-lg uppercase tracking-tighter">Kết nối thành công</span>
+                    ) : (
+                      <span className="px-2 py-1 bg-rose-100 text-rose-600 text-[10px] font-black rounded-lg uppercase tracking-tighter">Lỗi kết nối</span>
+                    )}
                   </div>
                 )}
               </div>
