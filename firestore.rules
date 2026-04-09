@@ -76,11 +76,12 @@ service cloud.firestore {
     }
 
     function isValidApiKey(data) {
-      return hasOnlyAllowedFields(['ownerId', 'name', 'value', 'engine', 'createdAt', 'lastUsed']) &&
+      return hasOnlyAllowedFields(['ownerId', 'name', 'value', 'engine', 'createdAt', 'lastUsed', 'status']) &&
              data.ownerId is string && data.ownerId == request.auth.uid &&
              data.name is string && data.name.size() > 0 && data.name.size() < 50 &&
              data.value is string && data.value.size() > 0 && data.value.size() < 200 &&
-             data.engine in ['gemini', 'openai', 'anthropic'];
+             data.engine in ['gemini', 'openai', 'anthropic'] &&
+             (!('status' in data) || data.status in ['active', 'error']);
     }
 
     // ===============================================================

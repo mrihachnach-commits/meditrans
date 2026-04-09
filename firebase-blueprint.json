@@ -24,7 +24,8 @@
         "value": { "type": "string", "description": "The actual API key value." },
         "engine": { "type": "string", "enum": ["gemini", "openai", "anthropic"], "description": "The translation engine this key is for." },
         "createdAt": { "type": "string", "format": "date-time", "description": "When the key was added." },
-        "lastUsed": { "type": "string", "format": "date-time", "description": "When the key was last used for translation." }
+        "lastUsed": { "type": "string", "format": "date-time", "description": "When the key was last used for translation." },
+        "status": { "type": "string", "enum": ["active", "error"], "description": "The current status of the key." }
       },
       "required": ["ownerId", "name", "value", "engine"]
     }
