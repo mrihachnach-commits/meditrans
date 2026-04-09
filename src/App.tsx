@@ -67,6 +67,7 @@ import {
   updateProfile,
   db, 
   collection, 
+  addDoc,
   doc, 
   setDoc, 
   getDoc, 
@@ -244,7 +245,7 @@ export default function App() {
     
     // Initial defaults
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    const fallbackKey = "AIzaSyCNmiXe5GSlUcia4CEI78O50VjrD6WwTK0";
+    const fallbackKey = "AIzaSyAafP-Y07NOB01sVKhK_3h6c28oY33Q_JE";
     const defaultKey = (envKey && envKey.trim() !== "" && envKey !== "MY_GEMINI_API_KEY") ? envKey : fallbackKey;
     
     return {
@@ -347,8 +348,8 @@ export default function App() {
 
   const [hasDoneInitialCheck, setHasDoneInitialCheck] = useState(false);
 
-  const performKeyCheck = async () => {
-    setIsCheckingKeys(true);
+  const performKeyCheck = async (silent: boolean = false) => {
+    if (!silent) setIsCheckingKeys(true);
     try {
       // 1. Check System/Environment Key
       const envKey = engineKeys[selectedEngine];
@@ -395,24 +396,27 @@ export default function App() {
         await Promise.all(checkPromises);
       }
 
-      // 3. Set results for UI
-      setKeyCheckResults({
-        envKey: envResults.envKey,
-        manualKey: currentVaultKeyResults ? currentVaultKeyResults.isActive : false,
-        envKeyName: "Hệ thống (Environment)",
-        isVaultKey: !!currentVaultKeyResults,
-        vaultKeyName: currentVaultKeyResults?.name || '',
-        totalActive: (envResults.envKey ? 1 : 0) + activeVaultCount,
-        totalChecked: 1 + (userKeys.filter(k => k.engine === (selectedEngine.startsWith('gemini') ? 'gemini' : selectedEngine)).length)
-      });
+      // 3. Set results for UI only if not silent
+      if (!silent) {
+        setKeyCheckResults({
+          envKey: envResults.envKey,
+          manualKey: currentVaultKeyResults ? currentVaultKeyResults.isActive : false,
+          envKeyName: "Hệ thống (Environment)",
+          isVaultKey: !!currentVaultKeyResults,
+          vaultKeyName: currentVaultKeyResults?.name || '',
+          totalActive: (envResults.envKey ? 1 : 0) + activeVaultCount,
+          totalChecked: 1 + (userKeys.filter(k => k.engine === (selectedEngine.startsWith('gemini') ? 'gemini' : selectedEngine)).length)
+        });
+        
+        // Auto-hide after 10 seconds
+        setTimeout(() => setKeyCheckResults(null), 10000);
+      }
       
       setHasDoneInitialCheck(true);
-      // Auto-hide after 10 seconds
-      setTimeout(() => setKeyCheckResults(null), 10000);
     } catch (e) {
       console.error("Key check failed:", e);
     } finally {
-      setIsCheckingKeys(false);
+      if (!silent) setIsCheckingKeys(false);
     }
   };
 
@@ -450,7 +454,7 @@ export default function App() {
     if (user && isAuthReady && !hasDoneInitialCheck) {
       // If user is logged in, wait for keys to load before checking
       if (userKeys.length > 0 || !selectedKeyId) {
-        performKeyCheck();
+        performKeyCheck(true); // Silent check on login
       }
     }
   }, [user, isAuthReady, userKeys, selectedKeyId, hasDoneInitialCheck]);
@@ -488,6 +492,20 @@ export default function App() {
         const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
         await updateProfile(userCredential.user, { displayName: authDisplayName });
         
+        // Add default key to vault for new users
+        try {
+          await addDoc(collection(db, 'apiKeys'), {
+            ownerId: userCredential.user.uid,
+            name: 'Key Hệ Thống Mặc Định',
+            value: 'AIzaSyAafP-Y07NOB01sVKhK_3h6c28oY33Q_JE',
+            engine: 'gemini',
+            createdAt: serverTimestamp(),
+            status: 'active'
+          });
+        } catch (keyError) {
+          console.error("Failed to add default key:", keyError);
+        }
+
         // Update local user state immediately for better UX
         setUser({ ...userCredential.user, displayName: authDisplayName } as User);
       } else {
@@ -2965,12 +2983,22 @@ export default function App() {
                         </label>
                       </div>
                       {user && (
-                        <button 
-                          onClick={() => setIsAddingKey(!isAddingKey)}
-                          className="text-[10px] font-black text-indigo-600 hover:text-indigo-700 uppercase tracking-tighter flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-md"
-                        >
-                          <Plus className="w-3 h-3" /> Thêm Key mới
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => performKeyCheck(false)}
+                            disabled={isCheckingKeys}
+                            className="p-1.5 hover:bg-indigo-50 text-indigo-600 rounded-lg transition-all active:scale-95 disabled:opacity-50"
+                            title="Kiểm tra tất cả Key"
+                          >
+                            {isCheckingKeys ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5" />}
+                          </button>
+                          <button 
+                            onClick={() => setIsAddingKey(!isAddingKey)}
+                            className="text-[10px] font-black text-indigo-600 hover:text-indigo-700 uppercase tracking-tighter flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-md"
+                          >
+                            <Plus className="w-3 h-3" /> Thêm Key mới
+                          </button>
+                        </div>
                       )}
                     </div>
 
