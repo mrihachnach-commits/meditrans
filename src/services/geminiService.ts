@@ -14,15 +14,14 @@ export class GeminiService implements TranslationService {
   }
 
   private getAIInstance(): any {
-    // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio, 3. Fallback Key
+    // Priority: 1. Manual Key from UI, 2. Environment Key from AI Studio
     const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    const fallbackKey = "AIzaSyCNmiXe5GSlUcia4CEI78O50VjrD6WwTK0";
     
     let key = (this.apiKey && this.apiKey.trim() !== "") ? this.apiKey : envKey;
     
-    // If no key is found or it's a placeholder, use the fallback
+    // If key is a placeholder or empty, we can't proceed
     if (!key || key.trim() === "" || key === "MY_GEMINI_API_KEY") {
-      key = fallbackKey;
+      return null;
     }
     
     if (key && key.trim() !== "") {
@@ -44,8 +43,7 @@ export class GeminiService implements TranslationService {
   }
 
   async hasApiKey(): Promise<boolean> {
-    // Always returns true now because we have a fallback key
-    return true;
+    return this.getAIInstance() !== null;
   }
 
   async openKeySelection(): Promise<void> {
