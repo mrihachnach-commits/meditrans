@@ -340,6 +340,8 @@ export default function App() {
     envKeyName?: string;
     isVaultKey?: boolean;
     vaultKeyName?: string;
+    totalActive?: number;
+    totalChecked?: number;
   } | null>(null);
   const [isCheckingKeys, setIsCheckingKeys] = useState(false);
 
@@ -348,42 +350,60 @@ export default function App() {
   const performKeyCheck = async () => {
     setIsCheckingKeys(true);
     try {
-      // Get the current key that would be used
-      let key = engineKeys[selectedEngine];
-      let isVaultKey = false;
-      let vaultKeyName = '';
-
-      if (user && selectedKeyId && userKeys.length > 0) {
-        const vaultKey = userKeys.find(k => k.id === selectedKeyId);
-        const currentEngineType = selectedEngine.startsWith('gemini') ? 'gemini' : selectedEngine;
-        if (vaultKey && vaultKey.engine === currentEngineType) {
-          key = vaultKey.value;
-          isVaultKey = true;
-          vaultKeyName = vaultKey.name;
-        }
-      }
-
-      const testService = new GeminiService(key, "gemini-3.1-flash-lite-preview");
-      const results = await testService.checkAvailableKeys();
+      // 1. Check System/Environment Key
+      const envKey = engineKeys[selectedEngine];
+      const testService = new GeminiService(envKey, "gemini-3.1-flash-lite-preview");
+      const envResults = await testService.checkAvailableKeys();
       
-      // Update Firestore if it's a vault key
-      if (user && selectedKeyId && isVaultKey) {
-        const path = `apiKeys/${selectedKeyId}`;
-        try {
-          await updateDoc(doc(db, 'apiKeys', selectedKeyId), {
-            lastUsed: serverTimestamp(),
-            status: results.manualKey ? 'active' : 'error'
-          });
-        } catch (error) {
-          console.error("Failed to update key status in Firestore:", error);
-        }
+      // 2. Check ALL Vault Keys in parallel for better performance
+      let activeVaultCount = 0;
+      let currentVaultKeyResults = null;
+
+      if (user && userKeys.length > 0) {
+        const currentEngineType = selectedEngine.startsWith('gemini') ? 'gemini' : selectedEngine;
+        const vaultKeysToCheck = userKeys.filter(k => k.engine === currentEngineType);
+        
+        // Run checks in parallel
+        const checkPromises = vaultKeysToCheck.map(async (vKey) => {
+          const vService = new GeminiService(vKey.value, "gemini-3.1-flash-lite-preview");
+          const vRes = await vService.checkAvailableKeys();
+          const isActive = vRes.manualKey;
+          
+          if (isActive) activeVaultCount++;
+          
+          // Update Firestore for each key
+          try {
+            await updateDoc(doc(db, 'apiKeys', vKey.id), {
+              lastUsed: serverTimestamp(),
+              status: isActive ? 'active' : 'error'
+            });
+          } catch (e) {
+            console.error(`Failed to update key ${vKey.name}:`, e);
+          }
+          
+          // If this is the currently selected key, store its result for the notification
+          if (vKey.id === selectedKeyId) {
+            currentVaultKeyResults = {
+              isActive,
+              name: vKey.name
+            };
+          }
+          
+          return { id: vKey.id, isActive };
+        });
+
+        await Promise.all(checkPromises);
       }
 
-      // If we used a vault key, map manualKey result to vault info
+      // 3. Set results for UI
       setKeyCheckResults({
-        ...results,
-        isVaultKey,
-        vaultKeyName
+        envKey: envResults.envKey,
+        manualKey: currentVaultKeyResults ? currentVaultKeyResults.isActive : false,
+        envKeyName: "Hệ thống (Environment)",
+        isVaultKey: !!currentVaultKeyResults,
+        vaultKeyName: currentVaultKeyResults?.name || '',
+        totalActive: (envResults.envKey ? 1 : 0) + activeVaultCount,
+        totalChecked: 1 + (userKeys.filter(k => k.engine === (selectedEngine.startsWith('gemini') ? 'gemini' : selectedEngine)).length)
       });
       
       setHasDoneInitialCheck(true);
@@ -1757,7 +1777,14 @@ export default function App() {
                   <div className="bg-indigo-100 p-2 rounded-xl">
                     <Key className="w-5 h-5 text-indigo-600" />
                   </div>
-                  <h4 className="font-display font-black text-slate-800">Kiểm tra kết nối API</h4>
+                  <div>
+                    <h4 className="font-display font-black text-slate-800">Kiểm tra kết nối API</h4>
+                    {keyCheckResults.totalActive !== undefined && (
+                      <p className="text-[10px] font-black text-emerald-600 uppercase tracking-tighter">
+                        Hoạt động: {keyCheckResults.totalActive}/{keyCheckResults.totalChecked}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <button onClick={() => setKeyCheckResults(null)} className="p-1 hover:bg-slate-50 rounded-full">
                   <ChevronLeft className="w-5 h-5 text-slate-400 rotate-180" />
