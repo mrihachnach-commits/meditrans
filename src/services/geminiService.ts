@@ -46,6 +46,46 @@ export class GeminiService implements TranslationService {
     return this.getAIInstance() !== null;
   }
 
+  async checkAvailableKeys(): Promise<{ envKey: boolean; manualKey: boolean; envKeyName?: string }> {
+    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    const manualKey = this.apiKey;
+    
+    const results = {
+      envKey: false,
+      manualKey: false,
+      envKeyName: envKey ? "Hệ thống (Environment)" : undefined
+    };
+
+    if (envKey && envKey.trim() !== "" && envKey !== "MY_GEMINI_API_KEY") {
+      try {
+        const ai = new GoogleGenAI({ apiKey: envKey });
+        // Simple validation call
+        await ai.models.generateContent({
+          model: "gemini-1.5-flash",
+          contents: "test"
+        });
+        results.envKey = true;
+      } catch (e) {
+        console.warn("Environment key validation failed:", e);
+      }
+    }
+
+    if (manualKey && manualKey.trim() !== "") {
+      try {
+        const ai = new GoogleGenAI({ apiKey: manualKey });
+        await ai.models.generateContent({
+          model: "gemini-1.5-flash",
+          contents: "test"
+        });
+        results.manualKey = true;
+      } catch (e) {
+        console.warn("Manual key validation failed:", e);
+      }
+    }
+
+    return results;
+  }
+
   async openKeySelection(): Promise<void> {
     if (typeof window !== 'undefined' && (window as any).aistudio?.openSelectKey) {
       await (window as any).aistudio.openSelectKey();

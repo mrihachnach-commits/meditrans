@@ -334,6 +334,33 @@ export default function App() {
   const [newKey, setNewKey] = useState({ name: '', value: '', engine: 'gemini' });
   const [keyToDelete, setKeyToDelete] = useState<any | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [keyCheckResults, setKeyCheckResults] = useState<{ envKey: boolean; manualKey: boolean; envKeyName?: string } | null>(null);
+  const [isCheckingKeys, setIsCheckingKeys] = useState(false);
+
+  const performKeyCheck = async () => {
+    setIsCheckingKeys(true);
+    try {
+      // Get the current key that would be used
+      let key = engineKeys[selectedEngine];
+      if (user && selectedKeyId) {
+        const vaultKey = userKeys.find(k => k.id === selectedKeyId);
+        const currentEngineType = selectedEngine.startsWith('gemini') ? 'gemini' : selectedEngine;
+        if (vaultKey && vaultKey.engine === currentEngineType) {
+          key = vaultKey.value;
+        }
+      }
+
+      const testService = new GeminiService(key, "gemini-3.1-flash-lite-preview");
+      const results = await testService.checkAvailableKeys();
+      setKeyCheckResults(results);
+      // Auto-hide after 10 seconds
+      setTimeout(() => setKeyCheckResults(null), 10000);
+    } catch (e) {
+      console.error("Key check failed:", e);
+    } finally {
+      setIsCheckingKeys(false);
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -363,6 +390,13 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Perform key check when user logs in and keys are loaded
+  useEffect(() => {
+    if (user && isAuthReady) {
+      performKeyCheck();
+    }
+  }, [user, isAuthReady]);
 
   useEffect(() => {
     if (user) {
@@ -1513,9 +1547,220 @@ export default function App() {
     }
   }, [showSettings, engineKeys, user, selectedKeyId, userKeys, selectedEngine]);
 
+  if (!isAuthReady) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-slate-50 p-6">
+        <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl shadow-indigo-100/50 border border-slate-100 overflow-hidden p-10">
+          <div className="flex flex-col items-center mb-10">
+            <div className="w-20 h-20 bg-indigo-600 rounded-3xl flex items-center justify-center shadow-xl shadow-indigo-200 mb-6 rotate-3">
+              <Logo className="w-12 h-12 text-white" />
+            </div>
+            <h1 className="text-3xl font-display font-black text-slate-800 tracking-tight text-center">MediTrans AI</h1>
+            <p className="text-slate-400 font-bold text-sm mt-2 uppercase tracking-widest">Medical Translation System</p>
+          </div>
+
+          <div className="space-y-4">
+            <button 
+              onClick={() => {
+                setAuthMode('login');
+                setShowAuthModal(true);
+              }}
+              className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-3"
+            >
+              <LogIn className="w-5 h-5" />
+              Đăng nhập để bắt đầu
+            </button>
+            <button 
+              onClick={() => {
+                setAuthMode('register');
+                setShowAuthModal(true);
+              }}
+              className="w-full py-4 bg-white text-indigo-600 border-2 border-indigo-50 rounded-2xl font-bold hover:bg-indigo-50 transition-all active:scale-95"
+            >
+              Tạo tài khoản mới
+            </button>
+          </div>
+
+          <div className="mt-10 pt-8 border-t border-slate-50 text-center">
+            <p className="text-[10px] text-slate-300 font-black uppercase tracking-[0.3em]">
+              Copyright © Dr. Hoang Hiep
+            </p>
+          </div>
+        </div>
+
+        {/* Auth Modal */}
+        <AnimatePresence>
+          {showAuthModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowAuthModal(false)}
+                className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden"
+              >
+                <div className="p-10">
+                  <div className="flex items-center justify-between mb-8">
+                    <h3 className="text-2xl font-display font-black text-slate-800">
+                      {authMode === 'login' ? 'Chào mừng trở lại' : 'Đăng ký tài khoản'}
+                    </h3>
+                    <button onClick={() => setShowAuthModal(false)} className="p-2 hover:bg-slate-50 rounded-full transition-colors">
+                      <ChevronLeft className="w-6 h-6 text-slate-400 rotate-180" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleEmailAuth} className="space-y-5">
+                    {authMode === 'register' && (
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Họ và tên</label>
+                        <div className="relative">
+                          <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                          <input 
+                            type="text"
+                            required
+                            value={authDisplayName}
+                            onChange={(e) => setAuthDisplayName(e.target.value)}
+                            className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-slate-700"
+                            placeholder="Nguyễn Văn A"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Email</label>
+                      <div className="relative">
+                        <Languages className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                        <input 
+                          type="email"
+                          required
+                          value={authEmail}
+                          onChange={(e) => setAuthEmail(e.target.value)}
+                          className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-slate-700"
+                          placeholder="bacsi@example.com"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Mật khẩu</label>
+                      <div className="relative">
+                        <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                        <input 
+                          type="password"
+                          required
+                          value={authPassword}
+                          onChange={(e) => setAuthPassword(e.target.value)}
+                          className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-slate-700"
+                          placeholder="••••••••"
+                        />
+                      </div>
+                    </div>
+
+                    {authError && (
+                      <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-xs font-bold animate-in fade-in slide-in-from-top-2">
+                        <AlertCircle className="w-5 h-5 shrink-0" />
+                        {authError}
+                      </div>
+                    )}
+
+                    <button 
+                      type="submit"
+                      disabled={isLoggingIn}
+                      className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50"
+                    >
+                      {isLoggingIn ? <Loader2 className="w-6 h-6 animate-spin" /> : (authMode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản')}
+                    </button>
+                  </form>
+
+                  <div className="mt-8 text-center">
+                    <button 
+                      onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+                      className="text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors"
+                    >
+                      {authMode === 'login' ? 'Chưa có tài khoản? Đăng ký ngay' : 'Đã có tài khoản? Đăng nhập'}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <div className={cn("h-screen flex flex-col bg-slate-50 overflow-hidden", isFullScreen && "fixed inset-0 z-50")}>
+      {/* Key Check Notification */}
+      <AnimatePresence>
+        {keyCheckResults && (
+          <motion.div 
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-md px-4"
+          >
+            <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 p-6 flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="bg-indigo-100 p-2 rounded-xl">
+                    <Key className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <h4 className="font-display font-black text-slate-800">Kiểm tra kết nối API</h4>
+                </div>
+                <button onClick={() => setKeyCheckResults(null)} className="p-1 hover:bg-slate-50 rounded-full">
+                  <ChevronLeft className="w-5 h-5 text-slate-400 rotate-180" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <ShieldCheck className={cn("w-4 h-4", keyCheckResults.envKey ? "text-emerald-500" : "text-slate-300")} />
+                    <span className="text-xs font-bold text-slate-700">Key Hệ thống (Environment)</span>
+                  </div>
+                  {keyCheckResults.envKey ? (
+                    <span className="px-2 py-1 bg-emerald-100 text-emerald-600 text-[10px] font-black rounded-lg uppercase tracking-tighter">Kết nối thành công</span>
+                  ) : (
+                    <span className="px-2 py-1 bg-slate-200 text-slate-500 text-[10px] font-black rounded-lg uppercase tracking-tighter">Không khả dụng</span>
+                  )}
+                </div>
+
+                {keyCheckResults.manualKey && (
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <Key className="w-4 h-4 text-emerald-500" />
+                      <span className="text-xs font-bold text-slate-700">Key Thủ công (Manual)</span>
+                    </div>
+                    <span className="px-2 py-1 bg-emerald-100 text-emerald-600 text-[10px] font-black rounded-lg uppercase tracking-tighter">Kết nối thành công</span>
+                  </div>
+                )}
+              </div>
+
+              {!keyCheckResults.envKey && !keyCheckResults.manualKey && (
+                <div className="p-3 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-[10px] font-bold">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  Không có API Key nào hoạt động. Vui lòng cấu hình trong Cài đặt.
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Header */}
       {!isFullScreen && (
         <header className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4 shrink-0 shadow-sm z-30">
