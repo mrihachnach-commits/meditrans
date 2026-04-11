@@ -1921,7 +1921,10 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className={cn("h-screen flex flex-col bg-slate-50 overflow-hidden", isFullScreen && "fixed inset-0 z-50")}>
+      <div className={cn(
+        "h-screen flex flex-col bg-slate-50 overflow-hidden", 
+        (isFullScreen || (file && window.innerWidth < 768)) && "fixed inset-0 z-50"
+      )}>
       {/* Key Check Notification */}
       <AnimatePresence>
         {keyCheckResults && (
@@ -1992,7 +1995,7 @@ export default function App() {
         )}
       </AnimatePresence>
       {/* Header */}
-      {!isFullScreen && (
+      {(!isFullScreen && !(file && window.innerWidth < 768)) && (
         <header className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4 shrink-0 shadow-sm z-30">
         <LogoWithText />
 
@@ -2188,7 +2191,7 @@ export default function App() {
             <div className={cn(
               "flex flex-col bg-slate-100 overflow-hidden border-r border-slate-200 transition-all duration-300 ease-in-out relative",
               isFullScreen ? "w-1/2" : (showTranslationPanel ? "w-full md:w-1/2" : "w-full"),
-              mobileViewMode === 'pdf' ? "flex h-full" : (mobileViewMode === 'split' ? "flex h-[40%] shrink-0 md:h-full" : "hidden md:flex")
+              mobileViewMode === 'pdf' ? "flex h-full" : (mobileViewMode === 'split' ? "flex h-[45%] shrink-0 md:h-full" : "hidden md:flex")
             )}>
               <div className="h-11 bg-white border-b border-slate-200 flex items-center justify-between px-3 shrink-0 z-20 shadow-sm overflow-x-auto no-scrollbar">
                 <div className="flex items-center gap-3 min-w-max">
@@ -2398,7 +2401,7 @@ export default function App() {
               exit={{ x: 300, opacity: 0 }}
               className={cn(
                 "flex flex-col bg-white overflow-hidden transition-all duration-300",
-                isFullScreen ? "flex w-1/2" : (mobileViewMode === 'translation' ? "flex h-full" : (mobileViewMode === 'split' ? "flex h-[60%] border-t-2 border-slate-200 md:h-full md:border-t-0" : (showTranslationPanel ? "hidden md:flex w-1/2" : "hidden")))
+                isFullScreen ? "flex w-1/2" : (mobileViewMode === 'translation' ? "flex h-full" : (mobileViewMode === 'split' ? "flex h-[55%] border-t-2 border-slate-200 md:h-full md:border-t-0" : (showTranslationPanel ? "hidden md:flex w-1/2" : "hidden")))
               )}
             >
               <div className="h-11 border-b border-slate-200 flex items-center justify-between px-3 shrink-0 z-20 shadow-sm overflow-x-auto no-scrollbar">
@@ -2937,7 +2940,7 @@ export default function App() {
 
       {/* Mobile View Toggle & Navigation Floating Bar */}
       {file && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] md:hidden flex flex-col items-center gap-3 w-[90%] max-w-[360px]">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] md:hidden flex flex-col items-center gap-3 w-[92%] max-w-[380px]">
           {/* Main Action Bar */}
           <div className="w-full flex items-center bg-white/95 backdrop-blur-xl rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-slate-200 p-1.5 gap-1 ring-1 ring-slate-900/5 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* View Toggle */}
