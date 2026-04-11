@@ -345,7 +345,6 @@ export default function App() {
     totalChecked?: number;
   } | null>(null);
   const [isCheckingKeys, setIsCheckingKeys] = useState(false);
-  const [translatingCount, setTranslatingCount] = useState(0);
 
   const [hasDoneInitialCheck, setHasDoneInitialCheck] = useState(false);
 
@@ -1092,7 +1091,7 @@ export default function App() {
       let fullContent = "";
       let lastUpdateTime = Date.now();
       let firstChunkReceived = false;
-      const UPDATE_INTERVAL = 50; // Faster UI updates for "instant" feel
+      const UPDATE_INTERVAL = 100; // Update UI every 100ms for smooth streaming without lag
 
       for await (const chunk of stream) {
         if (!firstChunkReceived) {
@@ -1176,8 +1175,8 @@ export default function App() {
         return;
       }
 
-      // Use a slightly lower scale for pre-translation OCR to speed up rendering and upload
-      const viewport = page.getViewport({ scale: 1.5 }); 
+      // Use a fixed scale for pre-translation OCR to ensure consistency and quality
+      const viewport = page.getViewport({ scale: 2 }); 
       
       const canvas = document.createElement('canvas');
       canvas.width = viewport.width;
@@ -1210,7 +1209,7 @@ export default function App() {
         
         let fullContent = "";
         let lastUpdateTime = Date.now();
-        const UPDATE_INTERVAL = 50; // Faster UI updates
+        const UPDATE_INTERVAL = 150;
 
         for await (const chunk of stream) {
           if (signal?.aborted) break;
@@ -1276,37 +1275,32 @@ export default function App() {
   }, [pdfDoc, numPages, translationService]);
 
   useEffect(() => {
-    if (pdfDoc && autoTranslate) {
-      // Look ahead up to 5 pages and back 1 page to maintain a robust buffer
-      const pagesToBuffer = [
-        currentPage + 1, currentPage + 2, currentPage + 3, currentPage + 4, currentPage + 5,
-        currentPage - 1
-      ].filter(p => p >= 1 && p <= numPages);
-      
+    if (pdfDoc && autoTranslate && translations[currentPage]?.status === 'success' && !isTranslating) {
+      // Look ahead up to 2 pages to maintain a buffer
+      const pagesToBuffer = [currentPage + 1, currentPage + 2];
       const controllers: AbortController[] = [];
       
       for (const pageNum of pagesToBuffer) {
-        if (!translations[pageNum] && !translatingPagesRef.current.has(pageNum)) {
+        if (pageNum <= numPages && !translations[pageNum] && !translatingPagesRef.current.has(pageNum)) {
           const controller = new AbortController();
           controllers.push(controller);
           preTranslateControllersRef.current.set(pageNum, controller);
           
-          // Start immediately without delay for maximum speed
-          preTranslatePage(pageNum, controller.signal).finally(() => {
-            preTranslateControllersRef.current.delete(pageNum);
-          });
+          const timer = setTimeout(() => {
+            preTranslatePage(pageNum, controller.signal).finally(() => {
+              preTranslateControllersRef.current.delete(pageNum);
+            });
+          }, 500);
+          
+          // Note: we don't return here, we want to start all timers
         }
       }
 
       return () => {
-        // Only abort if we are moving far away or if it's necessary
-        // For now, let's keep background tasks running unless we have too many
-        if (controllers.length > 10) {
-          controllers.forEach(c => c.abort());
-        }
+        controllers.forEach(c => c.abort());
       };
     }
-  }, [currentPage, pdfDoc, autoTranslate, translations, numPages, preTranslatePage]);
+  }, [currentPage, pdfDoc, autoTranslate, translations, numPages, preTranslatePage, isTranslating]);
 
   useEffect(() => {
     if (user && fileId) {
@@ -1340,13 +1334,6 @@ export default function App() {
     }
   }, [user, fileId]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTranslatingCount(translatingPagesRef.current.size);
-    }, 500);
-    return () => clearInterval(interval);
-  }, []);
-
   const currentEngineRef = useRef<string | null>(null);
   const currentKeyRef = useRef<string | null>(null);
 
@@ -1371,9 +1358,9 @@ export default function App() {
     currentKeyRef.current = key;
 
     if (selectedEngine === 'gemini-flash') {
-      translationService.current = new GeminiService(key, "gemini-1.5-flash");
+      translationService.current = new GeminiService(key, "gemini-3.1-flash-lite-preview");
     } else if (selectedEngine === 'gemini-pro') {
-      translationService.current = new GeminiService(key, "gemini-1.5-pro");
+      translationService.current = new GeminiService(key, "gemini-3.1-pro-preview");
     } else if (selectedEngine === 'medical-specialized') {
       translationService.current = new MedicalApiService(key);
     }
@@ -1949,19 +1936,9 @@ export default function App() {
 
         <div className="flex items-center gap-2">
           {file && (
-            <div className="hidden lg:flex items-center gap-4">
-              {translatingCount > 0 && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-full animate-pulse">
-                  <Loader2 className="w-3 h-3 text-indigo-600 animate-spin" />
-                  <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">
-                    Dịch ngầm {translatingCount} trang
-                  </span>
-                </div>
-              )}
-              <div className="hidden md:flex items-center bg-slate-50 rounded-full px-3 py-1 gap-2 border border-slate-100 max-w-[200px]">
-                <FileText className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-xs font-medium text-slate-600 truncate">{file.name}</span>
-              </div>
+            <div className="hidden md:flex items-center bg-slate-50 rounded-full px-3 py-1 gap-2 border border-slate-100 max-w-[300px]">
+              <FileText className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-xs font-medium text-slate-600 truncate">{file.name}</span>
             </div>
           )}
           
