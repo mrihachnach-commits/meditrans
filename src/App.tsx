@@ -32,6 +32,7 @@ import {
   Hand,
   Trash2,
   RefreshCcw,
+  Layout,
   ZoomIn,
   ZoomOut,
   Maximize,
@@ -300,7 +301,7 @@ export default function App() {
     return () => document.removeEventListener('fullscreenchange', handleFullScreenChange);
   }, []);
   const [showTranslationPanel, setShowTranslationPanel] = useState(false);
-  const [mobileViewMode, setMobileViewMode] = useState<'pdf' | 'translation'>('pdf');
+  const [mobileViewMode, setMobileViewMode] = useState<'pdf' | 'translation' | 'split'>('pdf');
   const [autoTranslate, setAutoTranslate] = useState(false);
   const [zoom, setZoom] = useState(0.82); // Default to 82% as requested
   const [isAutoFit, setIsAutoFit] = useState(true);
@@ -995,6 +996,12 @@ export default function App() {
     });
   };
 
+  useEffect(() => {
+    if (file && isAutoFit) {
+      fitToWidth();
+    }
+  }, [mobileViewMode, file, isAutoFit]);
+
   const fitToWidthAction = () => {
     setIsAutoFit(true);
     fitToWidth();
@@ -1082,9 +1089,9 @@ export default function App() {
     setIsTranslating(true);
     translatingPagesRef.current.add(targetPage);
 
-    // Auto-switch to translation view on mobile when starting translation
-    if (window.innerWidth < 768) {
-      setMobileViewMode('translation');
+    // Auto-switch to split view on mobile when starting translation so they see both
+    if (window.innerWidth < 768 && mobileViewMode === 'pdf') {
+      setMobileViewMode('split');
     }
 
     try {
@@ -2023,6 +2030,11 @@ export default function App() {
               const nextState = !showTranslationPanel;
               setShowTranslationPanel(nextState);
               if (!nextState) setSelectedTerm(null);
+              
+              // On mobile, also update mobileViewMode for better sync
+              if (window.innerWidth < 768) {
+                setMobileViewMode(nextState ? 'split' : 'pdf');
+              }
             }}
             className={cn(
               "p-2 rounded-full transition-all",
@@ -2176,7 +2188,7 @@ export default function App() {
             <div className={cn(
               "flex flex-col bg-slate-100 overflow-hidden border-r border-slate-200 transition-all duration-300 ease-in-out relative",
               isFullScreen ? "w-1/2" : (showTranslationPanel ? "w-full md:w-1/2" : "w-full"),
-              mobileViewMode === 'pdf' ? "flex h-full" : "hidden md:flex"
+              mobileViewMode === 'pdf' ? "flex h-full" : (mobileViewMode === 'split' ? "flex h-[40%] shrink-0 md:h-full" : "hidden md:flex")
             )}>
               <div className="h-11 bg-white border-b border-slate-200 flex items-center justify-between px-3 shrink-0 z-20 shadow-sm overflow-x-auto no-scrollbar">
                 <div className="flex items-center gap-3 min-w-max">
@@ -2386,7 +2398,7 @@ export default function App() {
               exit={{ x: 300, opacity: 0 }}
               className={cn(
                 "flex flex-col bg-white overflow-hidden transition-all duration-300",
-                isFullScreen ? "flex w-1/2" : (mobileViewMode === 'translation' ? "flex h-full" : (showTranslationPanel ? "hidden md:flex w-1/2" : "hidden"))
+                isFullScreen ? "flex w-1/2" : (mobileViewMode === 'translation' ? "flex h-full" : (mobileViewMode === 'split' ? "flex h-[60%] border-t-2 border-slate-200 md:h-full md:border-t-0" : (showTranslationPanel ? "hidden md:flex w-1/2" : "hidden")))
               )}
             >
               <div className="h-11 border-b border-slate-200 flex items-center justify-between px-3 shrink-0 z-20 shadow-sm overflow-x-auto no-scrollbar">
@@ -2933,7 +2945,7 @@ export default function App() {
               <button 
                 onClick={() => setMobileViewMode('pdf')}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-all duration-300",
+                  "flex items-center gap-1 px-2 py-1.5 rounded-full text-[8px] font-black uppercase tracking-wider transition-all duration-300",
                   mobileViewMode === 'pdf' 
                     ? "bg-white text-indigo-600 shadow-sm scale-105" 
                     : "text-slate-500"
@@ -2943,9 +2955,21 @@ export default function App() {
                 PDF
               </button>
               <button 
+                onClick={() => setMobileViewMode('split')}
+                className={cn(
+                  "flex items-center gap-1 px-2 py-1.5 rounded-full text-[8px] font-black uppercase tracking-wider transition-all duration-300",
+                  mobileViewMode === 'split' 
+                    ? "bg-white text-indigo-600 shadow-sm scale-105" 
+                    : "text-slate-500"
+                )}
+              >
+                <Layout className="w-3 h-3" />
+                Đôi
+              </button>
+              <button 
                 onClick={() => setMobileViewMode('translation')}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-all duration-300",
+                  "flex items-center gap-1 px-2 py-1.5 rounded-full text-[8px] font-black uppercase tracking-wider transition-all duration-300",
                   mobileViewMode === 'translation' 
                     ? "bg-white text-indigo-600 shadow-sm scale-105" 
                     : "text-slate-500"
