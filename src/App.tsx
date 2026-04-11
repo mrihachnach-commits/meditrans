@@ -198,7 +198,7 @@ export default function App() {
   const PAGES_PER_JOB = 100;
   const totalJobs = Math.ceil(numPages / PAGES_PER_JOB);
 
-  // Use a ref for the master list to avoid massive state updates causing lag
+  const [fileId, setFileId] = useState<string | null>(null);
   const [translations, setTranslations] = useState<TranslationState>({});
   const translationsRef = useRef<TranslationState>({});
   const currentPageRef = useRef<number>(1);
@@ -692,6 +692,7 @@ export default function App() {
     
     setFile(null);
     setFileUrl(null);
+    setFileId(null);
     setPdfDoc(null);
     setNumPages(0);
     setCurrentPage(1);
@@ -740,6 +741,10 @@ export default function App() {
       setIsPdfLoading(true);
       setPdfError(null);
       
+      // Generate a document ID based on filename and size
+      const docId = `${selectedFile.name.replace(/[^a-zA-Z0-9]/g, '_')}_${selectedFile.size}`;
+      setFileId(docId);
+
       // Small delay to allow UI to update and browser to settle after file picker
       await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -852,15 +857,26 @@ export default function App() {
 
     try {
       const page = await pdfDoc.getPage(pageNum);
-      const viewport = page.getViewport({ scale: zoom * 2 });
+      
+      // iOS Canvas Limit Check: Ensure canvas doesn't exceed 4096px which is safe for most mobile browsers
+      const MAX_CANVAS_DIMENSION = 4096;
+      let renderScale = zoom * 2;
+      const baseViewport = page.getViewport({ scale: 1 });
+      
+      if (baseViewport.width * renderScale > MAX_CANVAS_DIMENSION || baseViewport.height * renderScale > MAX_CANVAS_DIMENSION) {
+        renderScale = Math.min(MAX_CANVAS_DIMENSION / baseViewport.width, MAX_CANVAS_DIMENSION / baseViewport.height);
+        console.log(`[MediTrans] Đã giới hạn tỉ lệ render cho mobile: ${renderScale}`);
+      }
+      
+      const viewport = page.getViewport({ scale: renderScale });
       const canvas = canvasRef.current;
       const context = canvas.getContext('2d', { alpha: false }); // Optimization: disable alpha if not needed
 
       if (context) {
         canvas.height = viewport.height;
         canvas.width = viewport.width;
-        canvas.style.width = `${viewport.width / 2}px`;
-        canvas.style.height = `${viewport.height / 2}px`;
+        canvas.style.width = `${viewport.width / (renderScale / zoom)}px`;
+        canvas.style.height = `${viewport.height / (renderScale / zoom)}px`;
         
         const renderTask = page.render({
           canvasContext: context,
@@ -1026,6 +1042,11 @@ export default function App() {
     setIsTranslating(true);
     translatingPagesRef.current.add(targetPage);
 
+    // Auto-switch to translation view on mobile when starting translation
+    if (window.innerWidth < 768) {
+      setMobileViewMode('translation');
+    }
+
     try {
       const startTime = Date.now();
       console.log(`[MediTrans] Bắt đầu dịch trang ${targetPage}...`);
@@ -1039,7 +1060,7 @@ export default function App() {
         return;
       }
 
-      const MAX_DIMENSION = 1024; // Further reduced for faster upload while maintaining OCR quality
+      const MAX_DIMENSION = 1536; // Increased for better OCR quality on mobile/high-res docs
       
       let captureCanvas = originalCanvas;
       
@@ -1058,7 +1079,7 @@ export default function App() {
         }
       }
 
-      const imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.7); // Lower quality for faster upload
+      const imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.85); // Increased quality for better OCR
       console.log(`[MediTrans] Đã nén ảnh xong sau ${Date.now() - startTime}ms. Đang gửi yêu cầu tới Gemini...`);
 
       const stream = translationService.current.translateMedicalPageStream({
@@ -1095,6 +1116,20 @@ export default function App() {
       // Only update if we are still on the same file
       if (fileIdRef.current === currentFileId) {
         setTranslations(prev => ({ ...prev, [targetPage]: finalResult }));
+        
+        // Sync to Firestore if user is logged in
+        if (user && fileId) {
+          const path = `users/${user.uid}/documents/${fileId}/pages/${targetPage}`;
+          try {
+            await setDoc(doc(db, 'users', user.uid, 'documents', fileId, 'pages', targetPage.toString()), {
+              content: fullContent,
+              status: 'success',
+              updatedAt: serverTimestamp()
+            });
+          } catch (e) {
+            console.error("Failed to sync translation to Firestore:", e);
+          }
+        }
       }
       setActiveTranslation(null);
     } catch (error: any) {
@@ -1202,6 +1237,19 @@ export default function App() {
         
         if (fileIdRef.current === currentFileId) {
           setTranslations(prev => ({ ...prev, [pageNum]: finalResult }));
+          
+          // Sync to Firestore if user is logged in
+          if (user && fileId) {
+            try {
+              await setDoc(doc(db, 'users', user.uid, 'documents', fileId, 'pages', pageNum.toString()), {
+                content: fullContent,
+                status: 'success',
+                updatedAt: serverTimestamp()
+              });
+            } catch (e) {
+              console.error("Failed to sync pre-translation to Firestore:", e);
+            }
+          }
         }
         
         // Clear active translation if it was this page
@@ -1253,6 +1301,38 @@ export default function App() {
       };
     }
   }, [currentPage, pdfDoc, autoTranslate, translations, numPages, preTranslatePage, isTranslating]);
+
+  useEffect(() => {
+    if (user && fileId) {
+      console.log(`[MediTrans] Listening for translations for document: ${fileId}`);
+      const q = query(collection(db, 'users', user.uid, 'documents', fileId, 'pages'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const remoteTranslations: TranslationState = {};
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          remoteTranslations[parseInt(doc.id)] = {
+            content: data.content,
+            status: data.status as any
+          };
+        });
+        
+        setTranslations(prev => {
+          const newState = { ...prev };
+          Object.keys(remoteTranslations).forEach(page => {
+            const pageNum = parseInt(page);
+            // Only update if we don't have it locally or if it's currently loading/error
+            if (!newState[pageNum] || newState[pageNum].status !== 'success') {
+              newState[pageNum] = remoteTranslations[pageNum];
+            }
+          });
+          return newState;
+        });
+      }, (error) => {
+        console.error("Error listening for translations:", error);
+      });
+      return () => unsubscribe();
+    }
+  }, [user, fileId]);
 
   const currentEngineRef = useRef<string | null>(null);
   const currentKeyRef = useRef<string | null>(null);

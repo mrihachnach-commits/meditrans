@@ -25,6 +25,13 @@ service cloud.firestore {
     //   - createdAt: timestamp (optional) - When the key was added.
     //   - lastUsed: timestamp (optional) - When the key was last used.
     //
+    // Collection: users/{userId}/documents/{docId}/pages
+    // Document ID: pageNum (Page number)
+    // Fields:
+    //   - content: string (required) - The translated text content.
+    //   - status: string (required) - The status of the translation.
+    //   - updatedAt: timestamp (optional) - When the translation was last updated.
+    //
     // ===============================================================
 
     // ===============================================================
@@ -84,6 +91,13 @@ service cloud.firestore {
              (!('status' in data) || data.status in ['active', 'error']);
     }
 
+    function isValidTranslation(data) {
+      return hasOnlyAllowedFields(['content', 'status', 'updatedAt']) &&
+             data.content is string && data.content.size() < 100000 && // Limit size to 100KB per page
+             data.status in ['success', 'error'] &&
+             (data.updatedAt == null || data.updatedAt is timestamp);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -100,6 +114,11 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isValidApiKey(request.resource.data);
       allow update: if isAuthenticated() && isDocOwner() && isValidApiKey(request.resource.data);
       allow delete: if isAuthenticated() && (isDocOwner() || isAdmin());
+    }
+
+    match /users/{userId}/documents/{docId}/pages/{pageNum} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) && isValidTranslation(request.resource.data);
     }
   }
 }

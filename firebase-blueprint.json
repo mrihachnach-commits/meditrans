@@ -28,12 +28,27 @@
         "status": { "type": "string", "enum": ["active", "error"], "description": "The current status of the key." }
       },
       "required": ["ownerId", "name", "value", "engine"]
+    },
+    "Translation": {
+      "title": "Translation",
+      "description": "Stored translation for a specific page of a document.",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string", "description": "The translated text content." },
+        "status": { "type": "string", "enum": ["success", "error"], "description": "The status of the translation." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the translation was last updated." }
+      },
+      "required": ["content", "status"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "User",
       "description": "Collection of user profiles."
+    },
+    "/users/{userId}/documents/{docId}/pages/{pageNum}": {
+      "schema": "Translation",
+      "description": "Collection of translations for a specific document and page."
     },
     "/apiKeys/{keyId}": {
       "schema": "ApiKey",
