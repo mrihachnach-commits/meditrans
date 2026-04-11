@@ -1092,6 +1092,10 @@ export default function App() {
     // Auto-switch to split view on mobile when starting translation so they see both
     if (window.innerWidth < 768 && mobileViewMode === 'pdf') {
       setMobileViewMode('split');
+      // Scroll to the bottom where the translation panel is
+      setTimeout(() => {
+        window.scrollTo({ top: window.innerHeight * 0.4, behavior: 'smooth' });
+      }, 300);
     }
 
     try {
@@ -2207,8 +2211,8 @@ export default function App() {
                       </button>
                     )}
 
-                    {/* Mobile Navigation */}
-                    <div className="flex items-center gap-0.5 md:hidden bg-slate-50 rounded-lg px-1.5 py-0.5 border border-slate-100">
+                    {/* Mobile Navigation - Removed as redundant with floating bar */}
+                    <div className="hidden md:flex items-center gap-0.5 bg-slate-50 rounded-lg px-1.5 py-0.5 border border-slate-100">
                       <button 
                         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                         disabled={currentPage === 1}
@@ -2251,7 +2255,7 @@ export default function App() {
                     </div>
                   )}
 
-                  <div className="flex items-center gap-0.5">
+                  <div className="hidden md:flex items-center gap-0.5">
                     <button 
                       onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                       disabled={currentPage === 1}
@@ -2409,8 +2413,8 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em]">Translation</span>
                     
-                    {/* Mobile Navigation */}
-                    <div className="flex items-center gap-0.5 md:hidden bg-slate-50 rounded-lg px-1.5 py-0.5 border border-slate-100">
+                    {/* Mobile Navigation - Removed as redundant with floating bar */}
+                    <div className="hidden md:flex items-center gap-0.5 bg-slate-50 rounded-lg px-1.5 py-0.5 border border-slate-100">
                       <button 
                         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                         disabled={currentPage === 1}
@@ -2668,50 +2672,23 @@ export default function App() {
                           : translations[currentPage]?.content || ''}
                       </ReactMarkdown>
 
-                      {/* Mobile Navigation Buttons at bottom of translation */}
-                      <div className="mt-12 pt-8 border-t border-slate-100 md:hidden flex flex-col gap-4">
-                        {currentPage < numPages && (
-                          <button 
-                            onClick={() => {
-                              setCurrentPage(p => p + 1);
-                              window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                            className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all active:scale-95 shadow-lg shadow-indigo-100"
-                          >
-                            <span>Trang tiếp theo ({currentPage + 1}/{numPages})</span>
-                            <ChevronRight className="w-4 h-4" />
-                          </button>
-                        )}
-                        
-                        {currentPage > 1 && (
-                          <button 
-                            onClick={() => {
-                              setCurrentPage(p => p - 1);
-                              window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                            className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 transition-all active:scale-95"
-                          >
-                            <ChevronLeft className="w-4 h-4" />
-                            <span>Trang trước ({currentPage - 1}/{numPages})</span>
-                          </button>
-                        )}
-                      </div>
-
                       {activeTranslation && activeTranslation.page === currentPage && (
-                        <div className="mt-4 flex flex-col gap-3">
-                          <div className="flex items-center gap-2 text-indigo-400 italic text-xs animate-pulse">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            <span>Đang dịch...</span>
+                        <div className="mt-6 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100/50 flex flex-col gap-3">
+                          <div className="flex items-center gap-2 text-indigo-600 font-bold text-xs animate-pulse">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Đang dịch nội dung y khoa...</span>
                           </div>
                           <button 
                             onClick={cancelTranslation}
-                            className="w-fit px-3 py-1.5 bg-slate-50 text-slate-500 rounded-lg text-[10px] font-bold hover:bg-rose-50 hover:text-rose-600 transition-all border border-slate-100 flex items-center gap-1.5"
+                            className="w-fit px-4 py-2 bg-white text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-rose-50 hover:text-rose-600 transition-all border border-slate-200 shadow-sm flex items-center gap-2"
                           >
-                            <Square className="w-2.5 h-2.5 fill-current" />
-                            Dừng dịch trang này
+                            <Square className="w-3 h-3 fill-current" />
+                            Dừng dịch
                           </button>
                         </div>
                       )}
+
+                      {/* Mobile Navigation Buttons - Removed as redundant with floating bar */}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -2723,7 +2700,7 @@ export default function App() {
 
       {/* Tablet Navigation Buttons */}
       {file && !showSettings && !showAuthModal && (
-        <div className="fixed bottom-6 md:bottom-8 left-0 right-0 pointer-events-none z-40 flex justify-between px-4 md:px-12">
+        <div className="fixed bottom-6 md:bottom-8 left-0 right-0 pointer-events-none z-40 hidden md:flex justify-between px-4 md:px-12">
           <button 
             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
             disabled={currentPage === 1 || isPdfLoading || isRendering}
@@ -3016,19 +2993,39 @@ export default function App() {
 
             <div className="w-px h-6 bg-slate-200 mx-0.5 shrink-0" />
 
-            {/* Auto Toggle */}
-            <button 
-              onClick={() => setAutoTranslate(!autoTranslate)}
-              className={cn(
-                "p-2.5 rounded-full transition-all shrink-0",
-                autoTranslate 
-                  ? "bg-emerald-100 text-emerald-600 shadow-inner" 
-                  : "bg-slate-100 text-slate-400"
-              )}
-              title="Tự động dịch"
-            >
-              <RefreshCcw className={cn("w-4 h-4", autoTranslate && "animate-spin-slow")} />
-            </button>
+            {/* Actions */}
+            <div className="flex items-center gap-1 shrink-0">
+              <button 
+                onClick={() => translateCurrentPage(currentPage, true)}
+                disabled={isTranslating || isRendering}
+                className={cn(
+                  "p-2.5 rounded-full transition-all",
+                  (isTranslating || isRendering)
+                    ? "bg-slate-50 text-slate-300"
+                    : "bg-indigo-50 text-indigo-600 active:bg-indigo-100"
+                )}
+                title="Dịch lại trang này"
+              >
+                <RefreshCcw className={cn("w-4 h-4", (isTranslating || isRendering) && "animate-spin")} />
+              </button>
+
+              <button 
+                onClick={() => setAutoTranslate(!autoTranslate)}
+                className={cn(
+                  "p-2.5 rounded-full transition-all",
+                  autoTranslate 
+                    ? "bg-emerald-100 text-emerald-600 shadow-inner" 
+                    : "bg-slate-100 text-slate-400"
+                )}
+                title="Tự động dịch"
+              >
+                <div className={cn(
+                  "w-1.5 h-1.5 rounded-full absolute top-2 right-2",
+                  autoTranslate ? "bg-emerald-500 animate-pulse" : "hidden"
+                )} />
+                <Languages className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}
