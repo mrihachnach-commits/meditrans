@@ -694,6 +694,7 @@ export default function App() {
     setFileUrl(null);
     setFileId(null);
     setPdfDoc(null);
+    lastRenderedImageRef.current = null;
     setNumPages(0);
     setCurrentPage(1);
     setCurrentJob(1);
@@ -886,6 +887,12 @@ export default function App() {
         renderTaskRef.current = renderTask;
         await renderTask.promise;
         
+        // Small delay for mobile browsers to ensure canvas buffer is flushed before capture
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (isMobile) {
+          await new Promise(resolve => setTimeout(resolve, 150));
+        }
+
         // Instant Capture for Translation - Prepare image buffer immediately after render
         if (requestId === renderRequestIdRef.current) {
           const MAX_DIMENSION = 1536;
@@ -903,11 +910,19 @@ export default function App() {
             }
           }
           
-          lastRenderedImageRef.current = {
-            page: pageNum,
-            zoom,
-            buffer: captureCanvas.toDataURL('image/jpeg', 0.85)
-          };
+          const buffer = captureCanvas.toDataURL('image/jpeg', 0.85);
+          
+          // Safety check: data:, or very short string means capture failed
+          if (buffer.length > 1000) {
+            lastRenderedImageRef.current = {
+              page: pageNum,
+              zoom,
+              buffer: buffer
+            };
+          } else {
+            console.warn(`[MediTrans] Capture failed or returned empty buffer for page ${pageNum}`);
+            lastRenderedImageRef.current = null;
+          }
         }
 
         // Only update state if this is still the current request
@@ -1080,7 +1095,8 @@ export default function App() {
       let imageBuffer = "";
       if (lastRenderedImageRef.current && 
           lastRenderedImageRef.current.page === targetPage && 
-          lastRenderedImageRef.current.zoom === zoom) {
+          // Allow small zoom difference for cache hits (rounding issues)
+          Math.abs(lastRenderedImageRef.current.zoom - zoom) < 0.05) {
         imageBuffer = lastRenderedImageRef.current.buffer;
         console.log(`[MediTrans] Sử dụng ảnh đã cache, khởi động dịch tức thì!`);
       } else {
@@ -1093,7 +1109,10 @@ export default function App() {
           return;
         }
 
-        const MAX_DIMENSION = 1536; // Increased for better OCR quality on mobile/high-res docs
+        // Small delay before fresh capture to ensure canvas is ready
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        const MAX_DIMENSION = 1536; 
         
         let captureCanvas = originalCanvas;
         
@@ -1112,10 +1131,14 @@ export default function App() {
           }
         }
 
-        imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.85); // Increased quality for better OCR
+        imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.85);
       }
 
-      console.log(`[MediTrans] Đã có ảnh buffer sau ${Date.now() - startTime}ms. Đang gửi yêu cầu tới Gemini...`);
+      if (!imageBuffer || imageBuffer.length < 1000) {
+        throw new Error("Không thể chụp ảnh trang PDF để dịch. Vui lòng thử lại hoặc tải lại trang.");
+      }
+
+      console.log(`[MediTrans] Đã có ảnh buffer (${Math.round(imageBuffer.length/1024)}KB) sau ${Date.now() - startTime}ms. Đang gửi yêu cầu tới Gemini...`);
 
       const stream = translationService.current.translateMedicalPageStream({
         imageBuffer,

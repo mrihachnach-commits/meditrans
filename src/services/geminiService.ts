@@ -105,18 +105,21 @@ export class GeminiService implements TranslationService {
     }
 
     const systemInstruction = `
-      Bạn là chuyên gia dịch thuật Y khoa cao cấp.
-      Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown.
-      Giữ nguyên cấu trúc xuống dòng, không gộp các mục.
-      Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn.
+      Bạn là chuyên gia dịch thuật Y khoa cao cấp với khả năng OCR cực kỳ chính xác.
+      Nhiệm vụ: Trích xuất và dịch TOÀN BỘ nội dung văn bản từ hình ảnh sang tiếng Việt.
       
-      QUY TẮC QUAN TRỌNG VỀ DẤU CHẤM VÀ MỤC LỤC:
-      1. TUYỆT ĐỐI KHÔNG lặp lại dấu chấm (.) quá 5 lần liên tiếp. 
-      2. Nếu trong ảnh có hàng dài dấu chấm nối (leader dots), hãy rút gọn chúng thành ĐÚNG 3-5 dấu chấm.
-      3. Mỗi mục trong mục lục PHẢI nằm trên một dòng riêng biệt.
-      4. Định dạng mục lục ưu tiên: **Tên chương** ... Trang XX
-      5. Nếu bạn thấy mình đang lặp lại dấu chấm vô tận, hãy dừng lại và chuyển sang mục tiếp theo.
-      6. Đảm bảo số trang nằm ở cuối dòng của mỗi mục tương ứng.
+      YÊU CẦU BẮT BUỘC:
+      1. OCR CHÍNH XÁC: Đọc kỹ từng từ trong ảnh. Không được bỏ sót thông tin hoặc tự ý tóm tắt.
+      2. GIỮ NGUYÊN ĐỊNH DẠNG: Sử dụng Markdown. Giữ nguyên cấu trúc bảng, danh sách, và xuống dòng.
+      3. THUẬT NGỮ Y KHOA: Sử dụng thuật ngữ chuyên ngành chuẩn xác nhất.
+      4. KHÔNG THÊM LỜI DẪN: Chỉ trả về nội dung đã dịch.
+      
+      QUY TẮC VỀ DẤU CHẤM VÀ MỤC LỤC:
+      - Rút gọn hàng dài dấu chấm (.) thành đúng 3-5 dấu chấm.
+      - Mỗi mục trong mục lục PHẢI nằm trên một dòng riêng biệt.
+      - Đảm bảo số trang khớp chính xác với những gì hiển thị trong ảnh.
+      
+      LƯU Ý: Nếu hình ảnh mờ hoặc khó đọc, hãy cố gắng suy luận dựa trên ngữ cảnh y khoa nhưng vẫn phải bám sát các ký tự nhìn thấy được.
     `;
 
     const prompt = `Dịch trang ${pageNumber} sang tiếng Việt.`;
@@ -228,18 +231,19 @@ export class GeminiService implements TranslationService {
     }
 
     const systemInstruction = `
-      Bạn là chuyên gia dịch thuật Y khoa cao cấp.
-      Dịch hình ảnh sang tiếng Việt, giữ nguyên định dạng Markdown.
-      Giữ nguyên cấu trúc xuống dòng, không gộp các mục.
-      Sử dụng thuật ngữ chuyên ngành chuẩn. Không thêm lời dẫn.
+      Bạn là chuyên gia dịch thuật Y khoa cao cấp với khả năng OCR cực kỳ chính xác.
+      Nhiệm vụ: Trích xuất và dịch TOÀN BỘ nội dung văn bản từ hình ảnh sang tiếng Việt.
       
-      QUY TẮC QUAN TRỌNG VỀ DẤU CHẤM VÀ MỤC LỤC:
-      1. TUYỆT ĐỐI KHÔNG lặp lại dấu chấm (.) quá 5 lần liên tiếp. 
-      2. Nếu trong ảnh có hàng dài dấu chấm nối (leader dots), hãy rút gọn chúng thành ĐÚNG 3-5 dấu chấm.
-      3. Mỗi mục trong mục lục PHẢI nằm trên một dòng riêng biệt.
-      4. Định dạng mục lục ưu tiên: **Tên chương** ... Trang XX
-      5. Nếu bạn thấy mình đang lặp lại dấu chấm vô tận, hãy dừng lại và chuyển sang mục tiếp theo.
-      6. Đảm bảo số trang nằm ở cuối dòng của mỗi mục tương ứng.
+      YÊU CẦU BẮT BUỘC:
+      1. OCR CHÍNH XÁC: Đọc kỹ từng từ trong ảnh. Không được bỏ sót thông tin hoặc tự ý tóm tắt.
+      2. GIỮ NGUYÊN ĐỊNH DẠNG: Sử dụng Markdown. Giữ nguyên cấu trúc bảng, danh sách, và xuống dòng.
+      3. THUẬT NGỮ Y KHOA: Sử dụng thuật ngữ chuyên ngành chuẩn xác nhất.
+      4. KHÔNG THÊM LỜI DẪN: Chỉ trả về nội dung đã dịch.
+      
+      QUY TẮC VỀ DẤU CHẤM VÀ MỤC LỤC:
+      - Rút gọn hàng dài dấu chấm (.) thành đúng 3-5 dấu chấm.
+      - Mỗi mục trong mục lục PHẢI nằm trên một dòng riêng biệt.
+      - Đảm bảo số trang khớp chính xác với những gì hiển thị trong ảnh.
     `;
 
     const prompt = `Dịch trang ${pageNumber} sang tiếng Việt.`;
