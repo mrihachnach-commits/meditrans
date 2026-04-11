@@ -712,6 +712,7 @@ export default function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const renderTaskRef = useRef<any>(null);
+  const lastRenderedImageRef = useRef<{ page: number, zoom: number, buffer: string } | null>(null);
   const translationService = useRef<TranslationService | null>(null);
 
   // Pre-load PDF worker
@@ -885,6 +886,30 @@ export default function App() {
         renderTaskRef.current = renderTask;
         await renderTask.promise;
         
+        // Instant Capture for Translation - Prepare image buffer immediately after render
+        if (requestId === renderRequestIdRef.current) {
+          const MAX_DIMENSION = 1536;
+          let captureCanvas = canvas;
+          
+          if (canvas.width > MAX_DIMENSION || canvas.height > MAX_DIMENSION) {
+            const tempCanvas = document.createElement('canvas');
+            const ratio = Math.min(MAX_DIMENSION / canvas.width, MAX_DIMENSION / canvas.height);
+            tempCanvas.width = canvas.width * ratio;
+            tempCanvas.height = canvas.height * ratio;
+            const tempCtx = tempCanvas.getContext('2d');
+            if (tempCtx) {
+              tempCtx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height);
+              captureCanvas = tempCanvas;
+            }
+          }
+          
+          lastRenderedImageRef.current = {
+            page: pageNum,
+            zoom,
+            buffer: captureCanvas.toDataURL('image/jpeg', 0.85)
+          };
+        }
+
         // Only update state if this is still the current request
         if (requestId === renderRequestIdRef.current) {
           // Signal that visual rendering is done so translation can start immediately
@@ -1051,36 +1076,46 @@ export default function App() {
       const startTime = Date.now();
       console.log(`[MediTrans] Bắt đầu dịch trang ${targetPage}...`);
 
-      // Create a temporary canvas for optimized capture
-      const originalCanvas = canvasRef.current;
-      
-      // Final safety check: ensure the canvas we're about to capture is still the right one
-      if (targetPage !== currentPageRef.current || isRenderingRef.current) {
-        console.log(`[MediTrans] Hủy capture trang ${targetPage} do thay đổi trạng thái (Page: ${currentPageRef.current}, Rendering: ${isRenderingRef.current})`);
-        return;
-      }
-
-      const MAX_DIMENSION = 1536; // Increased for better OCR quality on mobile/high-res docs
-      
-      let captureCanvas = originalCanvas;
-      
-      // Resize if the original is too large to reduce payload size and API latency
-      if (originalCanvas.width > MAX_DIMENSION || originalCanvas.height > MAX_DIMENSION) {
-        const tempCanvas = document.createElement('canvas');
-        const ratio = Math.min(MAX_DIMENSION / originalCanvas.width, MAX_DIMENSION / originalCanvas.height);
-        tempCanvas.width = originalCanvas.width * ratio;
-        tempCanvas.height = originalCanvas.height * ratio;
+      // Use cached image if available for instant start
+      let imageBuffer = "";
+      if (lastRenderedImageRef.current && 
+          lastRenderedImageRef.current.page === targetPage && 
+          lastRenderedImageRef.current.zoom === zoom) {
+        imageBuffer = lastRenderedImageRef.current.buffer;
+        console.log(`[MediTrans] Sử dụng ảnh đã cache, khởi động dịch tức thì!`);
+      } else {
+        // Create a temporary canvas for optimized capture if cache is missing
+        const originalCanvas = canvasRef.current;
         
-        const tempCtx = tempCanvas.getContext('2d');
-        if (tempCtx) {
-          tempCtx.drawImage(originalCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
-          captureCanvas = tempCanvas;
-          console.log(`[MediTrans] Đã tối ưu kích thước ảnh: ${tempCanvas.width}x${tempCanvas.height}`);
+        // Final safety check: ensure the canvas we're about to capture is still the right one
+        if (targetPage !== currentPageRef.current || isRenderingRef.current) {
+          console.log(`[MediTrans] Hủy capture trang ${targetPage} do thay đổi trạng thái (Page: ${currentPageRef.current}, Rendering: ${isRenderingRef.current})`);
+          return;
         }
+
+        const MAX_DIMENSION = 1536; // Increased for better OCR quality on mobile/high-res docs
+        
+        let captureCanvas = originalCanvas;
+        
+        // Resize if the original is too large to reduce payload size and API latency
+        if (originalCanvas.width > MAX_DIMENSION || originalCanvas.height > MAX_DIMENSION) {
+          const tempCanvas = document.createElement('canvas');
+          const ratio = Math.min(MAX_DIMENSION / originalCanvas.width, MAX_DIMENSION / originalCanvas.height);
+          tempCanvas.width = originalCanvas.width * ratio;
+          tempCanvas.height = originalCanvas.height * ratio;
+          
+          const tempCtx = tempCanvas.getContext('2d');
+          if (tempCtx) {
+            tempCtx.drawImage(originalCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
+            captureCanvas = tempCanvas;
+            console.log(`[MediTrans] Đã tối ưu kích thước ảnh: ${tempCanvas.width}x${tempCanvas.height}`);
+          }
+        }
+
+        imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.85); // Increased quality for better OCR
       }
 
-      const imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.85); // Increased quality for better OCR
-      console.log(`[MediTrans] Đã nén ảnh xong sau ${Date.now() - startTime}ms. Đang gửi yêu cầu tới Gemini...`);
+      console.log(`[MediTrans] Đã có ảnh buffer sau ${Date.now() - startTime}ms. Đang gửi yêu cầu tới Gemini...`);
 
       const stream = translationService.current.translateMedicalPageStream({
         imageBuffer,
@@ -1410,13 +1445,10 @@ export default function App() {
 
   useEffect(() => {
     if (pdfDoc && autoTranslate && !isRendering && !isTranslating && !translations[currentPage]) {
-      const timer = setTimeout(() => {
-        // Re-check conditions after delay
-        if (!isRenderingRef.current && !isTranslatingRef.current && !translationsRef.current[currentPage]) {
-          translateCurrentPage(currentPage);
-        }
-      }, 20); // Reduced delay from 100ms to 20ms for near-instant startup
-      return () => clearTimeout(timer);
+      // Instant startup without delay
+      if (!isRenderingRef.current && !isTranslatingRef.current && !translationsRef.current[currentPage]) {
+        translateCurrentPage(currentPage);
+      }
     }
   }, [currentPage, pdfDoc, autoTranslate, isRendering, isTranslating, translations, translateCurrentPage]);
 
