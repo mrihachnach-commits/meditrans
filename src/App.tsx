@@ -380,7 +380,7 @@ export default function App() {
               status: isActive ? 'active' : 'error'
             });
           } catch (e) {
-            console.error(`Failed to update key ${vKey.name}:`, e);
+            handleFirestoreError(e, OperationType.UPDATE, `apiKeys/${vKey.id}`);
           }
           
           // If this is the currently selected key, store its result for the notification
@@ -504,7 +504,7 @@ export default function App() {
             status: 'active'
           });
         } catch (keyError) {
-          console.error("Failed to add default key:", keyError);
+          handleFirestoreError(keyError, OperationType.WRITE, 'apiKeys');
         }
 
         // Update local user state immediately for better UX
@@ -1181,12 +1181,13 @@ export default function App() {
         // Periodic sync to Firestore for persistence
         if (user && fileId && now - lastSaveTime > SAVE_INTERVAL && fullContent.length > 0) {
           lastSaveTime = now;
+          const path = `users/${user.uid}/documents/${fileId}/pages/${targetPage}`;
           // Fire and forget periodic save
           setDoc(doc(db, 'users', user.uid, 'documents', fileId, 'pages', targetPage.toString()), {
             content: fullContent,
             status: 'loading',
             updatedAt: serverTimestamp()
-          }, { merge: true }).catch(err => console.warn("Failed periodic sync:", err));
+          }, { merge: true }).catch(err => handleFirestoreError(err, OperationType.WRITE, path));
         }
       }
       
@@ -1204,6 +1205,7 @@ export default function App() {
         // Sync to Firestore if user is logged in
         if (user && fileId) {
           console.log(`[MediTrans] Đang lưu bản dịch trang ${targetPage} lên Firestore...`);
+          const path = `users/${user.uid}/documents/${fileId}/pages/${targetPage}`;
           try {
             await setDoc(doc(db, 'users', user.uid, 'documents', fileId, 'pages', targetPage.toString()), {
               content: fullContent,
@@ -1212,7 +1214,7 @@ export default function App() {
             });
             console.log(`[MediTrans] Đã lưu thành công trang ${targetPage} lên Firestore.`);
           } catch (e) {
-            console.error("Failed to sync translation to Firestore:", e);
+            handleFirestoreError(e, OperationType.WRITE, path);
           }
         } else {
           console.warn("[MediTrans] Không thể lưu lên Firestore: User hoặc FileId không khả dụng", { hasUser: !!user, fileId });
@@ -1318,11 +1320,12 @@ export default function App() {
           // Periodic sync to Firestore
           if (user && fileId && now - lastSaveTime > SAVE_INTERVAL && fullContent.length > 0) {
             lastSaveTime = now;
+            const path = `users/${user.uid}/documents/${fileId}/pages/${pageNum}`;
             setDoc(doc(db, 'users', user.uid, 'documents', fileId, 'pages', pageNum.toString()), {
               content: fullContent,
               status: 'loading',
               updatedAt: serverTimestamp()
-            }, { merge: true }).catch(err => console.warn("Failed periodic pre-sync:", err));
+            }, { merge: true }).catch(err => handleFirestoreError(err, OperationType.WRITE, path));
           }
         }
         
@@ -1341,6 +1344,7 @@ export default function App() {
           
           // Sync to Firestore if user is logged in
           if (user && fileId) {
+            const path = `users/${user.uid}/documents/${fileId}/pages/${pageNum}`;
             try {
               await setDoc(doc(db, 'users', user.uid, 'documents', fileId, 'pages', pageNum.toString()), {
                 content: fullContent,
@@ -1348,7 +1352,7 @@ export default function App() {
                 updatedAt: serverTimestamp()
               });
             } catch (e) {
-              console.error("Failed to sync pre-translation to Firestore:", e);
+              handleFirestoreError(e, OperationType.WRITE, path);
             }
           }
         }
@@ -1430,7 +1434,8 @@ export default function App() {
           return newState;
         });
       }, (error) => {
-        console.error("Error listening for translations:", error);
+        const path = `users/${user.uid}/documents/${fileId}/pages`;
+        handleFirestoreError(error, OperationType.GET, path);
       });
       return () => unsubscribe();
     }
