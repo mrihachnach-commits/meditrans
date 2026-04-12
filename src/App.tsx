@@ -3060,6 +3060,14 @@ export default function App() {
               </button>
 
               <button 
+                onClick={() => setShowSettings(true)}
+                className="p-2.5 rounded-full bg-slate-100 text-slate-500 active:bg-slate-200 transition-all"
+                title="Cài đặt"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+
+              <button 
                 onClick={clearFile}
                 className="p-2.5 rounded-full bg-rose-50 text-rose-500 active:bg-rose-100 transition-all"
                 title="Xóa PDF"
