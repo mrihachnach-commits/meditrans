@@ -12,6 +12,7 @@ import { MedicalDictionary } from './components/MedicalDictionary';
 import { Logo, LogoWithText } from './components/Logo';
 
 import { FileExplorer, FileData } from './components/FileExplorer';
+import { UploadStatus, UploadTask } from './components/UploadStatus';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js`;
 
@@ -265,6 +266,66 @@ export default function App() {
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [selectedPagesToDownload, setSelectedPagesToDownload] = useState<number[]>([]);
   const [hasEnvKey, setHasEnvKey] = useState(false);
+  const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
+
+  const startUpload = async (fileToUpload: File, folderId: string | null) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const taskId = Math.random().toString(36).substring(7);
+    const newTask: UploadTask = {
+      id: taskId,
+      fileName: fileToUpload.name,
+      status: 'uploading',
+      progress: 0
+    };
+
+    setUploadTasks(prev => [newTask, ...prev]);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', fileToUpload);
+
+      const response = await fetch('/api/proxy-upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await response.json();
+      
+      if (data.token) {
+        await addDoc(collection(db, `users/${user.uid}/documents`), {
+          name: fileToUpload.name,
+          folderId: folderId,
+          token: data.token,
+          downloadUrl: data.download_url,
+          size: fileToUpload.size,
+          type: fileToUpload.type,
+          createdAt: serverTimestamp()
+        });
+
+        setUploadTasks(prev => prev.map(t => 
+          t.id === taskId ? { ...t, status: 'success' } : t
+        ));
+
+        // Auto dismiss success after 5 seconds
+        setTimeout(() => {
+          setUploadTasks(prev => prev.filter(t => t.id !== taskId));
+        }, 5000);
+      } else {
+        throw new Error("Upload failed");
+      }
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      setUploadTasks(prev => prev.map(t => 
+        t.id === taskId ? { ...t, status: 'error' } : t
+      ));
+    }
+  };
+
+  const dismissUploadTask = (id: string) => {
+    setUploadTasks(prev => prev.filter(t => t.id !== id));
+  };
 
   useEffect(() => {
     const checkKey = async () => {
@@ -2291,9 +2352,10 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 flex overflow-hidden relative bg-slate-50">
+        <UploadStatus tasks={uploadTasks} onDismiss={dismissUploadTask} />
         {!pdfDoc ? (
           <div className="flex-1 p-4 sm:p-8 overflow-hidden">
-            <FileExplorer onFileSelect={handleFileSelectFromExplorer} />
+            <FileExplorer onFileSelect={handleFileSelectFromExplorer} onUploadStart={startUpload} />
           </div>
         ) : (
           <div className="flex-1 flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-slate-200 min-h-0 w-full overflow-hidden relative">

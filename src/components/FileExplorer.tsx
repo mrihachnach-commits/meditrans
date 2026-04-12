@@ -56,14 +56,14 @@ export interface FileData {
 
 interface FileExplorerProps {
   onFileSelect: (file: FileData) => void;
+  onUploadStart: (file: File, folderId: string | null) => void;
 }
 
-export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect }) => {
+export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect, onUploadStart }) => {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [folders, setFolders] = useState<FolderData[]>([]);
   const [files, setFiles] = useState<FileData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [path, setPath] = useState<{id: string | null, name: string}[]>([{id: null, name: 'Root'}]);
   
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
@@ -128,35 +128,9 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect }) => {
   const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
-
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch('/api/proxy-upload', {
-        method: 'POST',
-        body: formData
-      });
-
-      const data = await response.json();
-      
-      if (data.token) {
-        await addDoc(collection(db, `users/${user.uid}/documents`), {
-          name: file.name,
-          folderId: currentFolderId,
-          token: data.token,
-          downloadUrl: data.download_url,
-          size: file.size,
-          type: file.type,
-          createdAt: serverTimestamp()
-        });
-      }
-    } catch (error) {
-      console.error("Error uploading file:", error);
-    } finally {
-      setUploading(false);
-    }
+    onUploadStart(file, currentFolderId);
+    // Reset input
+    e.target.value = '';
   };
 
   const handleDeleteItem = async () => {
@@ -266,7 +240,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect }) => {
           </button>
           <label className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 cursor-pointer">
             <Upload className="w-5 h-5" />
-            <input type="file" className="hidden" accept=".pdf" onChange={handleUploadFile} disabled={uploading} />
+            <input type="file" className="hidden" accept=".pdf" onChange={handleUploadFile} />
           </label>
         </div>
       </div>
@@ -538,26 +512,6 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect }) => {
               </div>
             </motion.div>
           </div>
-        )}
-      </AnimatePresence>
-
-      {/* Uploading Overlay */}
-      <AnimatePresence>
-        {uploading && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-4"
-          >
-            <div className="bg-indigo-600 p-4 rounded-3xl shadow-2xl shadow-indigo-200">
-              <Loader2 className="w-12 h-12 text-white animate-spin" />
-            </div>
-            <div className="text-center">
-              <p className="text-lg font-bold text-slate-800">Đang tải lên TinyVault...</p>
-              <p className="text-sm text-slate-500">Vui lòng không đóng trình duyệt</p>
-            </div>
-          </motion.div>
         )}
       </AnimatePresence>
 
