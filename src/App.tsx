@@ -2244,6 +2244,24 @@ export default function App() {
                       </button>
                     )}
 
+                    {/* Mobile Actions - Settings & Delete */}
+                    <div className="flex md:hidden items-center gap-0.5 mr-2">
+                      <button 
+                        onClick={() => setShowSettings(true)}
+                        className="p-1.5 text-slate-400 active:text-indigo-600 transition-colors"
+                        title="Cài đặt"
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                      </button>
+                      <button 
+                        onClick={clearFile}
+                        className="p-1.5 text-slate-400 active:text-rose-500 transition-colors"
+                        title="Xóa PDF"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
                     {/* Mobile Navigation - Removed as redundant with floating bar */}
                     <div className="hidden md:flex items-center gap-0.5 bg-slate-50 rounded-lg px-1.5 py-0.5 border border-slate-100">
                       <button 
@@ -2444,6 +2462,20 @@ export default function App() {
               <div className="h-11 border-b border-slate-200 flex items-center justify-between px-3 shrink-0 z-20 shadow-sm overflow-x-auto no-scrollbar">
                 <div className="flex items-center gap-3 min-w-max">
                   <div className="flex items-center gap-2">
+                    <div className="flex md:hidden items-center gap-0.5 mr-1">
+                      <button 
+                        onClick={() => setShowSettings(true)}
+                        className="p-1.5 text-slate-400 active:text-indigo-600 transition-colors"
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                      </button>
+                      <button 
+                        onClick={clearFile}
+                        className="p-1.5 text-slate-400 active:text-rose-500 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                     <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em]">Translation</span>
                     
                     {/* Mobile Navigation - Removed as redundant with floating bar */}
@@ -2955,38 +2987,8 @@ export default function App() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] md:hidden flex flex-col items-center gap-3 w-[95%] max-w-[420px]">
           {/* Main Action Bar */}
           <div className="w-full flex items-center bg-white/95 backdrop-blur-xl rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-slate-200 p-1 gap-0.5 ring-1 ring-slate-900/5 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Left Actions: Settings & Delete & Hand */}
-            <div className="flex items-center gap-0.5 pl-1">
-              <button 
-                onClick={() => setShowSettings(true)}
-                className="p-2 rounded-full text-slate-500 active:bg-slate-100 transition-all"
-                title="Cài đặt"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-              <button 
-                onClick={clearFile}
-                className="p-2 rounded-full text-rose-500 active:bg-rose-100 transition-all"
-                title="Xóa PDF"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-              <button 
-                onClick={() => setIsPanning(!isPanning)}
-                className={cn(
-                  "p-2 rounded-full transition-all",
-                  isPanning ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 active:bg-slate-100"
-                )}
-                title="Hand Tool"
-              >
-                <Hand className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="w-px h-6 bg-slate-200 mx-0.5 shrink-0" />
-
             {/* View Toggle */}
-            <div className="flex bg-slate-100/80 rounded-full p-0.5 gap-0.5 shrink-0">
+            <div className="flex bg-slate-100/80 rounded-full p-0.5 gap-0.5 shrink-0 ml-1">
               <button 
                 onClick={() => setMobileViewMode('pdf')}
                 className={cn(
