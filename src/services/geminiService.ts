@@ -149,10 +149,7 @@ export class GeminiService implements TranslationService {
           ],
           config: {
             systemInstruction: systemInstruction,
-            temperature: 0.1,
-            thinkingConfig: { 
-              thinkingLevel: this.modelName.includes("pro") ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL 
-            },
+            temperature: 0,
           }
         });
 
@@ -273,10 +270,7 @@ export class GeminiService implements TranslationService {
           ],
           config: {
             systemInstruction: systemInstruction,
-            temperature: 0.1,
-            thinkingConfig: { 
-              thinkingLevel: this.modelName.includes("pro") ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL 
-            },
+            temperature: 0,
           }
         });
 
@@ -355,10 +349,7 @@ export class GeminiService implements TranslationService {
           contents: [{ parts: [{ text: prompt }] }],
           config: {
             systemInstruction: systemInstruction,
-            temperature: 0.1,
-            thinkingConfig: { 
-              thinkingLevel: this.modelName.includes("pro") ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL 
-            },
+            temperature: 0,
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,

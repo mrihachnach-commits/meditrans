@@ -1201,7 +1201,7 @@ export default function App() {
       // Scroll to the bottom where the translation panel is
       setTimeout(() => {
         window.scrollTo({ top: window.innerHeight * 0.4, behavior: 'smooth' });
-      }, 300);
+      }, 50);
     }
 
     try {
@@ -1226,10 +1226,7 @@ export default function App() {
           return;
         }
 
-        // Small delay before fresh capture to ensure canvas is ready
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        const MAX_DIMENSION = 1536; 
+        const MAX_DIMENSION = 1280; 
         
         let captureCanvas = originalCanvas;
         
@@ -1248,7 +1245,7 @@ export default function App() {
           }
         }
 
-        imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.85);
+        imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.75);
       }
 
       if (!imageBuffer || imageBuffer.length < 1000) {
