@@ -14,12 +14,15 @@ const __dirname = path.dirname(__filename);
 // Load firebase config
 const firebaseConfig = JSON.parse(fs.readFileSync(path.join(__dirname, "firebase-applet-config.json"), "utf8"));
 
+// Set environment variables for firebase-admin
+process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
+
 // Initialize Firebase Admin
-// In this environment, we initialize with the project ID.
-// The container should have ADC (Application Default Credentials) configured.
-admin.initializeApp({
-  projectId: firebaseConfig.projectId,
-});
+if (admin.apps.length === 0) {
+  admin.initializeApp({
+    projectId: firebaseConfig.projectId,
+  });
+}
 
 const db = admin.firestore();
 const auth = admin.auth();
@@ -29,6 +32,7 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+  console.log("Admin Project ID:", admin.apps[0]?.options.projectId);
 
   const upload = multer({ storage: multer.memoryStorage() });
 
@@ -65,8 +69,23 @@ async function startServer() {
       return res.status(401).json({ error: "Unauthorized" });
     }
     const idToken = authHeader.split("Bearer ")[1];
+    if (!idToken || idToken === "null" || idToken === "undefined") {
+      console.error("Token is missing or null");
+      return res.status(401).json({ error: "Invalid token: Token is missing or null" });
+    }
     try {
+      // Manual decode for debugging
+      const parts = idToken.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+        console.log("Token Payload AUD:", payload.aud);
+        console.log("Token Payload ISS:", payload.iss);
+      }
+      
+      console.log("Verifying token for project:", firebaseConfig.projectId);
+      console.log("Token prefix:", idToken.substring(0, 15));
       const decodedToken = await auth.verifyIdToken(idToken);
+      console.log("Token verified for UID:", decodedToken.uid);
       const userDoc = await db.collection("users").doc(decodedToken.uid).get();
       const userData = userDoc.data();
       
@@ -80,8 +99,9 @@ async function startServer() {
       }
       req.user = decodedToken;
       next();
-    } catch (error) {
-      res.status(401).json({ error: "Invalid token" });
+    } catch (error: any) {
+      console.error("Token verification failed:", error.message);
+      res.status(401).json({ error: `Invalid token: ${error.message}` });
     }
   };
 

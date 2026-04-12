@@ -289,14 +289,59 @@ export default function App() {
     });
   }, []);
 
-  const handleLocalFileOpen = (localFile: File) => {
-    setFile(localFile);
-    setFileUrl(URL.createObjectURL(localFile));
+  const handleLocalFileOpen = async (localFile: File) => {
+    setIsPdfLoading(true);
+    setPdfError(null);
+    setShowExplorer(false);
     setIsLocalOnly(true);
-    setFileId(null);
+    
+    // Generate a temporary docId for local file
+    const docId = `local_${localFile.name.replace(/[^a-zA-Z0-9]/g, '_')}_${localFile.size}`;
+    setFileId(docId);
+
+    // Increment fileId to invalidate all pending translations
+    fileIdRef.current += 1;
+    
+    // Abort all pending translations
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    
+    preTranslateControllersRef.current.forEach(controller => controller.abort());
+    preTranslateControllersRef.current.clear();
+    translatingPagesRef.current.clear();
+
+    setFile(localFile);
     setTranslations({});
-    setNumPages(0);
     setCurrentPage(1);
+    setCurrentJob(1);
+    setAutoTranslate(false);
+
+    try {
+      if (fileUrl) URL.revokeObjectURL(fileUrl);
+      const url = URL.createObjectURL(localFile);
+      setFileUrl(url);
+      
+      console.log(`[MediTrans AI] Loading local PDF: ${localFile.name}`);
+
+      const loadingTask = pdfjs.getDocument({
+        url,
+        cMapUrl: `https://unpkg.com/pdfjs-dist@3.11.174/cmaps/`,
+        cMapPacked: true,
+        disableAutoFetch: false,
+        disableStream: false,
+      });
+
+      const pdf = await loadingTask.promise;
+      setPdfDoc(pdf);
+      setNumPages(pdf.numPages);
+    } catch (error: any) {
+      console.error("Error loading local PDF:", error);
+      setPdfError(`Không thể tải file PDF cục bộ: ${error.message || "Lỗi không xác định"}`);
+    } finally {
+      setIsPdfLoading(false);
+    }
   };
 
   const startUpload = async (fileToUpload: File, folderId: string | null) => {
