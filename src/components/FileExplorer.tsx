@@ -69,6 +69,11 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect }) => {
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   
+  const [showRenameModal, setShowRenameModal] = useState<{id: string, name: string, type: 'file' | 'folder'} | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{id: string, type: 'file' | 'folder', name: string} | null>(null);
+  
   const [showMoveModal, setShowMoveModal] = useState<{id: string, type: 'file' | 'folder'} | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -154,17 +159,30 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect }) => {
     }
   };
 
-  const handleDeleteItem = async (id: string, type: 'file' | 'folder') => {
-    if (!user || !window.confirm(`Bạn có chắc chắn muốn xóa ${type === 'file' ? 'tệp' : 'thư mục'} này?`)) return;
+  const handleDeleteItem = async () => {
+    if (!user || !showDeleteConfirm) return;
 
     try {
-      const collectionName = type === 'file' ? 'documents' : 'folders';
-      await deleteDoc(doc(db, `users/${user.uid}/${collectionName}`, id));
-      
-      // If it's a folder, we should ideally delete its contents too, 
-      // but for simplicity in this MVP, we'll just delete the folder.
+      const collectionName = showDeleteConfirm.type === 'file' ? 'documents' : 'folders';
+      await deleteDoc(doc(db, `users/${user.uid}/${collectionName}`, showDeleteConfirm.id));
+      setShowDeleteConfirm(null);
     } catch (error) {
       console.error("Error deleting item:", error);
+    }
+  };
+
+  const handleRename = async () => {
+    if (!user || !showRenameModal || !renameValue.trim()) return;
+
+    try {
+      const collectionName = showRenameModal.type === 'file' ? 'documents' : 'folders';
+      await updateDoc(doc(db, `users/${user.uid}/${collectionName}`, showRenameModal.id), {
+        name: renameValue.trim()
+      });
+      setShowRenameModal(null);
+      setRenameValue('');
+    } catch (error) {
+      console.error("Error renaming item:", error);
     }
   };
 
@@ -303,7 +321,18 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect }) => {
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDeleteItem(folder.id, 'folder');
+                      setRenameValue(folder.name);
+                      setShowRenameModal({ id: folder.id, name: folder.name, type: 'folder' });
+                    }}
+                    className="p-1.5 bg-white rounded-lg text-slate-300 hover:text-indigo-500 shadow-sm border border-slate-100"
+                    title="Đổi tên"
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                  </button>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowDeleteConfirm({ id: folder.id, type: 'folder', name: folder.name });
                     }}
                     className="p-1.5 bg-white rounded-lg text-slate-300 hover:text-rose-500 shadow-sm border border-slate-100"
                     title="Xóa"
@@ -348,7 +377,18 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect }) => {
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDeleteItem(file.id, 'file');
+                      setRenameValue(file.name);
+                      setShowRenameModal({ id: file.id, name: file.name, type: 'file' });
+                    }}
+                    className="p-1.5 bg-white rounded-lg text-slate-300 hover:text-indigo-500 shadow-sm border border-slate-100"
+                    title="Đổi tên"
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                  </button>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowDeleteConfirm({ id: file.id, type: 'file', name: file.name });
                     }}
                     className="p-1.5 bg-white rounded-lg text-slate-300 hover:text-rose-500 shadow-sm border border-slate-100"
                     title="Xóa"
@@ -407,6 +447,94 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect }) => {
                     <span className="text-sm font-bold text-slate-700">{folder.name}</span>
                   </button>
                 ))}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Rename Modal */}
+      <AnimatePresence>
+        {showRenameModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowRenameModal(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-8"
+            >
+              <h3 className="text-xl font-display font-bold text-slate-800 mb-6">Đổi tên {showRenameModal.type === 'file' ? 'tệp' : 'thư mục'}</h3>
+              <input 
+                type="text" 
+                placeholder="Tên mới" 
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                autoFocus
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm mb-6"
+              />
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowRenameModal(null)}
+                  className="flex-1 px-6 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button 
+                  onClick={handleRename}
+                  className="flex-1 px-6 py-3 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                >
+                  Lưu
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowDeleteConfirm(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-8"
+            >
+              <div className="bg-rose-50 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 mx-auto">
+                <Trash2 className="w-8 h-8 text-rose-500" />
+              </div>
+              <h3 className="text-xl font-display font-bold text-slate-800 mb-2 text-center">Xác nhận xóa?</h3>
+              <p className="text-slate-500 text-sm text-center mb-8">
+                Bạn có chắc chắn muốn xóa {showDeleteConfirm.type === 'file' ? 'tệp' : 'thư mục'} <span className="font-bold text-slate-700">"{showDeleteConfirm.name}"</span>? Hành động này không thể hoàn tác.
+              </p>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowDeleteConfirm(null)}
+                  className="flex-1 px-6 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button 
+                  onClick={handleDeleteItem}
+                  className="flex-1 px-6 py-3 rounded-xl text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-all shadow-lg shadow-rose-100"
+                >
+                  Xóa ngay
+                </button>
               </div>
             </motion.div>
           </div>
