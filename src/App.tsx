@@ -2386,7 +2386,7 @@ export default function App() {
               </div>
               <div 
                 className={cn(
-                  "flex-1 overflow-auto pdf-container relative bg-slate-100",
+                  "flex-1 overflow-auto pdf-container relative bg-slate-100 pb-24 md:pb-8",
                   isFullScreen ? "p-0" : "p-4 md:p-8",
                   isPanning ? "cursor-grab select-none touch-none" : "cursor-auto"
                 )} 
@@ -2688,7 +2688,7 @@ export default function App() {
                       key="content"
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="markdown-body select-text"
+                      className="markdown-body select-text pb-24 md:pb-0"
                       onMouseUp={handleMouseUp}
                       style={{ 
                         fontSize: `${fontSize}px`,
@@ -3057,6 +3057,14 @@ export default function App() {
                   autoTranslate ? "bg-emerald-500 animate-pulse" : "hidden"
                 )} />
                 <Languages className="w-4 h-4" />
+              </button>
+
+              <button 
+                onClick={clearFile}
+                className="p-2.5 rounded-full bg-rose-50 text-rose-500 active:bg-rose-100 transition-all"
+                title="Xóa PDF"
+              >
+                <Trash2 className="w-4 h-4" />
               </button>
             </div>
           </div>
