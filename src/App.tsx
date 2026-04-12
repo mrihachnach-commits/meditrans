@@ -367,6 +367,12 @@ export default function App() {
         body: formData
       });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Upload proxy failed:", errorData);
+        throw new Error(errorData.details || errorData.error || `Upload failed with status ${response.status}`);
+      }
+
       const data = await response.json();
       
       if (data.token) {
