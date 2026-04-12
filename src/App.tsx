@@ -2924,9 +2924,9 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
+              className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-8">
+              <div className="p-8 overflow-y-auto no-scrollbar">
                 <div className="text-center mb-8">
                   <div className="bg-indigo-600 w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-200">
                     <UserIcon className="text-white w-6 h-6" />
@@ -3209,380 +3209,386 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden"
+              className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-8">
-                <div className="flex items-center gap-3 mb-6">
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
                   <div className="bg-indigo-100 p-2 rounded-xl">
                     <Settings className="text-indigo-600 w-5 h-5" />
                   </div>
-                  <h3 className="text-xl font-display font-bold text-slate-800">Cấu hình Translation Engine</h3>
+                  <h3 className="text-xl font-display font-bold text-slate-800">Cấu hình hệ thống</h3>
                 </div>
-                
-                <div className="space-y-6">
-                  {/* User Profile Section */}
-                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center overflow-hidden">
-                        {user ? (
-                          <img 
-                            src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || 'User'}&background=6366f1&color=fff`} 
-                            alt="Avatar" 
-                            className="w-full h-full object-cover"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <UserIcon className="w-5 h-5 text-indigo-600" />
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">{user ? (user.displayName || user.email) : 'Khách'}</p>
-                        <p className="text-[10px] text-slate-500">{user ? (userRole === 'admin' ? 'Quản trị viên' : 'Người dùng') : 'Đăng nhập để lưu Key'}</p>
-                      </div>
-                    </div>
-                    {user ? (
-                      <div className="flex gap-2">
-                        {userRole === 'admin' && (
-                          <button 
-                            onClick={() => {
-                              setShowSettings(false);
-                              setShowAdminPanel(true);
-                              fetchAllUsers();
-                            }}
-                            className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg text-[10px] font-bold hover:bg-amber-200 transition-all"
-                          >
-                            Quản trị
-                          </button>
-                        )}
-                        <button 
-                          onClick={handleLogout}
-                          className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
-                          title="Đăng xuất"
-                        >
-                          <LogOut className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      <button 
-                        onClick={() => {
-                          setShowSettings(false);
-                          setShowAuthModal(true);
-                        }}
-                        className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100"
-                      >
-                        Đăng nhập
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Change Password Section */}
-                  {user && (
-                    <div className="pt-4 border-t border-slate-100">
-                      <button 
-                        onClick={() => setShowChangePassword(!showChangePassword)}
-                        className="flex items-center justify-between w-full text-left"
-                      >
-                        <div className="flex items-center gap-2">
-                          <ShieldCheck className="w-4 h-4 text-indigo-500" />
-                          <label className="text-xs font-bold text-slate-700 uppercase tracking-widest">
-                            Đổi mật khẩu
-                          </label>
-                        </div>
-                        <ChevronRight className={cn("w-4 h-4 text-slate-400 transition-transform", showChangePassword && "rotate-90")} />
-                      </button>
-                      
-                      <AnimatePresence>
-                        {showChangePassword && (
-                          <motion.div 
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            className="overflow-hidden"
-                          >
-                            <div className="pt-4 space-y-3">
-                              <input 
-                                type="password"
-                                placeholder="Mật khẩu mới (tối thiểu 6 ký tự)"
-                                value={newPasswordValue}
-                                onChange={(e) => setNewPasswordValue(e.target.value)}
-                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
-                              />
-                              <button 
-                                onClick={async () => {
-                                  if (newPasswordValue.length < 6) {
-                                    alert("Mật khẩu phải có ít nhất 6 ký tự");
-                                    return;
-                                  }
-                                  try {
-                                    const success = await changeOwnPassword(newPasswordValue);
-                                    if (success) {
-                                      alert("Đã đổi mật khẩu thành công");
-                                      setNewPasswordValue('');
-                                      setShowChangePassword(false);
-                                    }
-                                  } catch (e: any) {
-                                    alert(e.message);
-                                  }
-                                }}
-                                className="w-full py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all"
-                              >
-                                Xác nhận đổi mật khẩu
-                              </button>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
-                      API Key cho Gemini 3 Flash
-                    </label>
-                    <div className="flex gap-2 mt-3">
-                      <input 
-                        type="password"
-                        value={tempKeys['gemini-flash']}
-                        onChange={(e) => {
-                          setTempKeys(prev => ({ ...prev, ['gemini-flash']: e.target.value }));
-                          setTestStatus({ type: null, message: '' });
-                        }}
-                        placeholder="Nhập API Key cho Gemini..."
-                        className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm"
-                      />
-                      <button 
-                        onClick={async () => {
-                          if (!tempKeys['gemini-flash']) {
-                            setTestStatus({ type: 'error', message: "Vui lòng nhập API Key để kiểm tra." });
-                            return;
-                          }
-                          setTestStatus({ type: 'loading', message: "Đang kiểm tra..." });
-                          const testService = new GeminiService(tempKeys['gemini-flash'], "gemini-3-flash-preview");
-                          try {
-                            await testService.lookupMedicalTerm("test");
-                            setTestStatus({ type: 'success', message: "Kết nối thành công! API Key hoạt động tốt." });
-                          } catch (err: any) {
-                            setTestStatus({ type: 'error', message: "Lỗi kết nối: " + err.message });
-                          }
-                        }}
-                        disabled={testStatus.type === 'loading'}
-                        className="px-4 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-all flex items-center justify-center disabled:opacity-50"
-                        title="Kiểm tra kết nối"
-                      >
-                        {testStatus.type === 'loading' ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="w-4 h-4" />
-                        )}
-                      </button>
-                    </div>
-
-                    {testStatus.type && (
-                      <div className={cn(
-                        "mt-2 p-3 rounded-xl text-[10px] font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-1",
-                        testStatus.type === 'success' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : 
-                        testStatus.type === 'error' ? "bg-rose-50 text-rose-600 border border-rose-100" :
-                        "bg-indigo-50 text-indigo-600 border border-indigo-100"
-                      )}>
-                        {testStatus.type === 'success' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-                        {testStatus.message}
-                      </div>
-                    )}
-                    
-                    <div className="mt-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-                      <p className="text-[10px] text-indigo-700 leading-relaxed">
-                        <span className="font-bold">Ghi chú:</span> Nếu để trống, ứng dụng sẽ sử dụng API Key mặc định từ hệ thống (nếu có).
-                      </p>
-                    </div>
-
-                    {(window as any).aistudio?.openSelectKey && (
-                      <button 
-                        onClick={async () => {
-                          if (translationService.current instanceof GeminiService) {
-                            await (translationService.current as any).openKeySelection();
-                            setShowSettings(false);
-                          }
-                        }}
-                        className="mt-3 w-full px-4 py-2.5 bg-indigo-100 text-indigo-700 rounded-xl text-[10px] font-bold hover:bg-indigo-200 transition-all flex items-center justify-center gap-2"
-                      >
-                        <Settings className="w-3.5 h-3.5" />
-                        Sử dụng API Key từ AI Studio
-                      </button>
-                    )}
-                  </div>
-                  
-                  {/* Key Vault Section */}
-                  <div className="pt-4 border-t border-slate-100">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <Key className="w-4 h-4 text-indigo-500" />
-                        <label className="text-xs font-bold text-slate-700 uppercase tracking-widest">
-                          Kho lưu trữ Key (Vault)
-                        </label>
-                      </div>
-                      {user && (
-                        <div className="flex items-center gap-2">
-                          <button 
-                            onClick={() => performKeyCheck(false)}
-                            disabled={isCheckingKeys}
-                            className="p-1.5 hover:bg-indigo-50 text-indigo-600 rounded-lg transition-all active:scale-95 disabled:opacity-50"
-                            title="Kiểm tra tất cả Key"
-                          >
-                            {isCheckingKeys ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5" />}
-                          </button>
-                          <button 
-                            onClick={() => setIsAddingKey(!isAddingKey)}
-                            className="text-[10px] font-black text-indigo-600 hover:text-indigo-700 uppercase tracking-tighter flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-md"
-                          >
-                            <Plus className="w-3 h-3" /> Thêm Key mới
-                          </button>
-                        </div>
+                <button 
+                  onClick={() => setShowSettings(false)}
+                  className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
+                {/* User Profile Section */}
+                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center overflow-hidden">
+                      {user ? (
+                        <img 
+                          src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || 'User'}&background=6366f1&color=fff`} 
+                          alt="Avatar" 
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <UserIcon className="w-5 h-5 text-indigo-600" />
                       )}
                     </div>
-
-                    {!user ? (
-                      <div className="bg-slate-50 rounded-2xl p-6 text-center border border-dashed border-slate-200">
-                        <ShieldCheck className="w-8 h-8 text-slate-300 mx-auto mb-3" />
-                        <p className="text-xs font-bold text-slate-500 mb-4">Đăng nhập để lưu trữ nhiều API Key và tự động chuyển đổi khi hết hạn mức.</p>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">{user ? (user.displayName || user.email) : 'Khách'}</p>
+                      <p className="text-[10px] text-slate-500">{user ? (userRole === 'admin' ? 'Quản trị viên' : 'Người dùng') : 'Đăng nhập để lưu Key'}</p>
+                    </div>
+                  </div>
+                  {user ? (
+                    <div className="flex gap-2">
+                      {userRole === 'admin' && (
                         <button 
-                          onClick={() => setShowAuthModal(true)}
-                          className="bg-indigo-600 text-white px-6 py-2 rounded-full text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                          onClick={() => {
+                            setShowSettings(false);
+                            setShowAdminPanel(true);
+                            fetchAllUsers();
+                          }}
+                          className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg text-[10px] font-bold hover:bg-amber-200 transition-all"
                         >
-                          Đăng nhập ngay
+                          Quản trị
                         </button>
+                      )}
+                      <button 
+                        onClick={handleLogout}
+                        className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                        title="Đăng xuất"
+                      >
+                        <LogOut className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => {
+                        setShowSettings(false);
+                        setShowAuthModal(true);
+                      }}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100"
+                    >
+                      Đăng nhập
+                    </button>
+                  )}
+                </div>
+
+                {/* Change Password Section */}
+                {user && (
+                  <div className="pt-4 border-t border-slate-100">
+                    <button 
+                      onClick={() => setShowChangePassword(!showChangePassword)}
+                      className="flex items-center justify-between w-full text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-indigo-500" />
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-widest">
+                          Đổi mật khẩu
+                        </label>
                       </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {isAddingKey && (
-                          <motion.div 
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="bg-indigo-50/50 rounded-2xl p-4 border border-indigo-100 mb-4"
-                          >
-                            <div className="grid grid-cols-1 gap-3 mb-3">
-                              <input 
-                                type="text"
-                                placeholder="Tên gợi nhớ (VD: Key 1)"
-                                value={newKey.name}
-                                onChange={(e) => setNewKey(prev => ({ ...prev, name: e.target.value }))}
-                                className="px-3 py-2 bg-white border border-indigo-100 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
-                              />
-                            </div>
+                      <ChevronRight className={cn("w-4 h-4 text-slate-400 transition-transform", showChangePassword && "rotate-90")} />
+                    </button>
+                    
+                    <AnimatePresence>
+                      {showChangePassword && (
+                        <motion.div 
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="pt-4 space-y-3">
                             <input 
                               type="password"
-                              placeholder="Dán API Key vào đây..."
-                              value={newKey.value}
-                              onChange={(e) => setNewKey(prev => ({ ...prev, value: e.target.value }))}
-                              className="w-full px-3 py-2 bg-white border border-indigo-100 rounded-xl text-xs mb-3 focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                              placeholder="Mật khẩu mới (tối thiểu 6 ký tự)"
+                              value={newPasswordValue}
+                              onChange={(e) => setNewPasswordValue(e.target.value)}
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
                             />
-                            <div className="flex justify-end gap-2">
-                              <button 
-                                onClick={() => setIsAddingKey(false)}
-                                className="px-3 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
-                              >
-                                Hủy
-                              </button>
-                              <button 
-                                onClick={handleAddKey}
-                                className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-bold hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100"
-                              >
-                                Lưu vào Vault
-                              </button>
-                            </div>
-                          </motion.div>
-                        )}
+                            <button 
+                              onClick={async () => {
+                                if (newPasswordValue.length < 6) {
+                                  alert("Mật khẩu phải có ít nhất 6 ký tự");
+                                  return;
+                                }
+                                try {
+                                  const success = await changeOwnPassword(newPasswordValue);
+                                  if (success) {
+                                    alert("Đã đổi mật khẩu thành công");
+                                    setNewPasswordValue('');
+                                    setShowChangePassword(false);
+                                  }
+                                } catch (e: any) {
+                                  alert(e.message);
+                                }
+                              }}
+                              className="w-full py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all"
+                            >
+                              Xác nhận đổi mật khẩu
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
 
-                        <div className="max-h-[200px] overflow-y-auto pr-2 space-y-2 no-scrollbar">
-                          {userKeys.length === 0 ? (
-                            <p className="text-[10px] text-slate-400 text-center py-4 italic">Chưa có Key nào trong kho lưu trữ.</p>
-                          ) : (
-                            userKeys.map((key) => (
-                              <div 
-                                key={key.id}
-                                className={cn(
-                                  "flex items-center justify-between p-3 rounded-xl border transition-all group",
-                                  selectedKeyId === key.id 
-                                    ? "bg-indigo-50 border-indigo-200 ring-1 ring-indigo-200" 
-                                    : "bg-white border-slate-100 hover:border-slate-200"
-                                )}
-                              >
-                                <div 
-                                  className="flex-1 cursor-pointer"
-                                  onClick={() => setSelectedKeyId(key.id)}
-                                >
-                                  <div className="flex items-center gap-2 mb-0.5">
-                                    <span className="text-xs font-bold text-slate-700">{key.name}</span>
-                                    {key.status && (
-                                      <span className={cn(
-                                        "text-[8px] px-1.5 py-0.5 rounded-full font-black uppercase tracking-tighter",
-                                        key.status === 'active' ? "bg-emerald-100 text-emerald-600" : "bg-rose-100 text-rose-600"
-                                      )}>
-                                        {key.status === 'active' ? 'Hoạt động' : 'Lỗi'}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]">
-                                    {key.value.substring(0, 8)}••••••••{key.value.substring(key.value.length - 4)}
-                                  </p>
-                                  {key.lastUsed && (
-                                    <p className="text-[8px] text-slate-300 italic mt-0.5">
-                                      Dùng lần cuối: {new Date(key.lastUsed.toDate()).toLocaleString('vi-VN')}
-                                    </p>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button 
-                                    onClick={() => setKeyToDelete(key)}
-                                    className="p-1.5 hover:bg-rose-50 text-rose-400 hover:text-rose-500 rounded-lg transition-colors"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                  {selectedKeyId === key.id && (
-                                    <div className="bg-emerald-500 p-1 rounded-full">
-                                      <CheckCircle2 className="w-3 h-3 text-white" />
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
+                    API Key cho Gemini 3 Flash
+                  </label>
+                  <div className="flex gap-2 mt-3">
+                    <input 
+                      type="password"
+                      value={tempKeys['gemini-flash']}
+                      onChange={(e) => {
+                        setTempKeys(prev => ({ ...prev, ['gemini-flash']: e.target.value }));
+                        setTestStatus({ type: null, message: '' });
+                      }}
+                      placeholder="Nhập API Key cho Gemini..."
+                      className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm"
+                    />
+                    <button 
+                      onClick={async () => {
+                        if (!tempKeys['gemini-flash']) {
+                          setTestStatus({ type: 'error', message: "Vui lòng nhập API Key để kiểm tra." });
+                          return;
+                        }
+                        setTestStatus({ type: 'loading', message: "Đang kiểm tra..." });
+                        const testService = new GeminiService(tempKeys['gemini-flash'], "gemini-3-flash-preview");
+                        try {
+                          await testService.lookupMedicalTerm("test");
+                          setTestStatus({ type: 'success', message: "Kết nối thành công! API Key hoạt động tốt." });
+                        } catch (err: any) {
+                          setTestStatus({ type: 'error', message: "Lỗi kết nối: " + err.message });
+                        }
+                      }}
+                      disabled={testStatus.type === 'loading'}
+                      className="px-4 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-all flex items-center justify-center disabled:opacity-50"
+                      title="Kiểm tra kết nối"
+                    >
+                      {testStatus.type === 'loading' ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+
+                  {testStatus.type && (
+                    <div className={cn(
+                      "mt-2 p-3 rounded-xl text-[10px] font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-1",
+                      testStatus.type === 'success' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : 
+                      testStatus.type === 'error' ? "bg-rose-50 text-rose-600 border border-rose-100" :
+                      "bg-indigo-50 text-indigo-600 border border-indigo-100"
+                    )}>
+                      {testStatus.type === 'success' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                      {testStatus.message}
+                    </div>
+                  )}
+                  
+                  <div className="mt-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                    <p className="text-[10px] text-indigo-700 leading-relaxed">
+                      <span className="font-bold">Ghi chú:</span> Nếu để trống, ứng dụng sẽ sử dụng API Key mặc định từ hệ thống (nếu có).
+                    </p>
+                  </div>
+
+                  {(window as any).aistudio?.openSelectKey && (
+                    <button 
+                      onClick={async () => {
+                        if (translationService.current instanceof GeminiService) {
+                          await (translationService.current as any).openKeySelection();
+                          setShowSettings(false);
+                        }
+                      }}
+                      className="mt-3 w-full px-4 py-2.5 bg-indigo-100 text-indigo-700 rounded-xl text-[10px] font-bold hover:bg-indigo-200 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                      Sử dụng API Key từ AI Studio
+                    </button>
+                  )}
+                </div>
+                
+                {/* Key Vault Section */}
+                <div className="pt-4 border-t border-slate-100">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Key className="w-4 h-4 text-indigo-500" />
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-widest">
+                        Kho lưu trữ Key (Vault)
+                      </label>
+                    </div>
+                    {user && (
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => performKeyCheck(false)}
+                          disabled={isCheckingKeys}
+                          className="p-1.5 hover:bg-indigo-50 text-indigo-600 rounded-lg transition-all active:scale-95 disabled:opacity-50"
+                          title="Kiểm tra tất cả Key"
+                        >
+                          {isCheckingKeys ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5" />}
+                        </button>
+                        <button 
+                          onClick={() => setIsAddingKey(!isAddingKey)}
+                          className="text-[10px] font-black text-indigo-600 hover:text-indigo-700 uppercase tracking-tighter flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-md"
+                        >
+                          <Plus className="w-3 h-3" /> Thêm Key mới
+                        </button>
                       </div>
                     )}
                   </div>
-                  
-                  <div className="pt-6 border-t border-slate-100 mb-4">
-                    <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2">
-                      <Trash2 className="w-4 h-4 text-rose-500" />
-                      Quản lý dữ liệu
-                    </h3>
-                    <p className="text-[10px] text-slate-500 mb-3">
-                      Xóa tất cả các bản dịch đã lưu trong phiên làm việc hiện tại.
-                    </p>
-                    <button 
-                      onClick={clearAllTranslations}
-                      className="w-full py-2 bg-rose-50 text-rose-600 rounded-xl text-xs font-bold hover:bg-rose-100 transition-all border border-rose-100 flex items-center justify-center gap-2"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Xóa tất cả bản dịch
-                    </button>
-                  </div>
-                  
-                  <div className="pt-4 flex gap-3">
-                    <button 
-                      onClick={() => setShowSettings(false)}
-                      className="flex-1 px-6 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors"
-                    >
-                      Hủy
-                    </button>
-                    <button 
-                      onClick={() => saveSettings(tempKeys)}
-                      className="flex-1 px-6 py-3 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
-                    >
-                      Lưu cấu hình
-                    </button>
-                  </div>
+
+                  {!user ? (
+                    <div className="bg-slate-50 rounded-2xl p-6 text-center border border-dashed border-slate-200">
+                      <ShieldCheck className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                      <p className="text-xs font-bold text-slate-500 mb-4">Đăng nhập để lưu trữ nhiều API Key và tự động chuyển đổi khi hết hạn mức.</p>
+                      <button 
+                        onClick={() => setShowAuthModal(true)}
+                        className="bg-indigo-600 text-white px-6 py-2 rounded-full text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                      >
+                        Đăng nhập ngay
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {isAddingKey && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="bg-indigo-50/50 rounded-2xl p-4 border border-indigo-100 mb-4"
+                        >
+                          <div className="grid grid-cols-1 gap-3 mb-3">
+                            <input 
+                              type="text"
+                              placeholder="Tên gợi nhớ (VD: Key 1)"
+                              value={newKey.name}
+                              onChange={(e) => setNewKey(prev => ({ ...prev, name: e.target.value }))}
+                              className="px-3 py-2 bg-white border border-indigo-100 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                          </div>
+                          <input 
+                            type="password"
+                            placeholder="Dán API Key vào đây..."
+                            value={newKey.value}
+                            onChange={(e) => setNewKey(prev => ({ ...prev, value: e.target.value }))}
+                            className="w-full px-3 py-2 bg-white border border-indigo-100 rounded-xl text-xs mb-3 focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button 
+                              onClick={() => setIsAddingKey(false)}
+                              className="px-3 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
+                            >
+                              Hủy
+                            </button>
+                            <button 
+                              onClick={handleAddKey}
+                              className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-bold hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100"
+                            >
+                              Lưu vào Vault
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+
+                      <div className="max-h-[200px] overflow-y-auto pr-2 space-y-2 no-scrollbar">
+                        {userKeys.length === 0 ? (
+                          <p className="text-[10px] text-slate-400 text-center py-4 italic">Chưa có Key nào trong kho lưu trữ.</p>
+                        ) : (
+                          userKeys.map((key) => (
+                            <div 
+                              key={key.id}
+                              className={cn(
+                                "flex items-center justify-between p-3 rounded-xl border transition-all group",
+                                selectedKeyId === key.id 
+                                  ? "bg-indigo-50 border-indigo-200 ring-1 ring-indigo-200" 
+                                  : "bg-white border-slate-100 hover:border-slate-200"
+                              )}
+                            >
+                              <div 
+                                className="flex-1 cursor-pointer"
+                                onClick={() => setSelectedKeyId(key.id)}
+                              >
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <span className="text-xs font-bold text-slate-700">{key.name}</span>
+                                  {key.status && (
+                                    <span className={cn(
+                                      "text-[8px] px-1.5 py-0.5 rounded-full font-black uppercase tracking-tighter",
+                                      key.status === 'active' ? "bg-emerald-100 text-emerald-600" : "bg-rose-100 text-rose-600"
+                                    )}>
+                                      {key.status === 'active' ? 'Hoạt động' : 'Lỗi'}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]">
+                                  {key.value.substring(0, 8)}••••••••{key.value.substring(key.value.length - 4)}
+                                </p>
+                                {key.lastUsed && (
+                                  <p className="text-[8px] text-slate-300 italic mt-0.5">
+                                    Dùng lần cuối: {new Date(key.lastUsed.toDate()).toLocaleString('vi-VN')}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button 
+                                  onClick={() => setKeyToDelete(key)}
+                                  className="p-1.5 hover:bg-rose-50 text-rose-400 hover:text-rose-500 rounded-lg transition-colors"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                                {selectedKeyId === key.id && (
+                                  <div className="bg-emerald-500 p-1 rounded-full">
+                                    <CheckCircle2 className="w-3 h-3 text-white" />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
+                
+                <div className="pt-6 border-t border-slate-100">
+                  <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2">
+                    <Trash2 className="w-4 h-4 text-rose-500" />
+                    Quản lý dữ liệu
+                  </h3>
+                  <p className="text-[10px] text-slate-500 mb-3">
+                    Xóa tất cả các bản dịch đã lưu trong phiên làm việc hiện tại.
+                  </p>
+                  <button 
+                    onClick={clearAllTranslations}
+                    className="w-full py-2 bg-rose-50 text-rose-600 rounded-xl text-xs font-bold hover:bg-rose-100 transition-all border border-rose-100 flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Xóa tất cả bản dịch
+                  </button>
+                </div>
+              </div>
+              
+              <div className="p-6 border-t border-slate-100 bg-slate-50 flex gap-3 shrink-0">
+                <button 
+                  onClick={() => setShowSettings(false)}
+                  className="flex-1 px-6 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button 
+                  onClick={() => saveSettings(tempKeys)}
+                  className="flex-1 px-6 py-3 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                >
+                  Lưu cấu hình
+                </button>
               </div>
             </motion.div>
           </div>
@@ -3604,27 +3610,27 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden"
+              className="relative bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-8">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-indigo-100 p-2 rounded-xl">
-                      <Download className="text-indigo-600 w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-display font-bold text-slate-800">Tải xuống bản dịch</h3>
-                      <p className="text-xs text-slate-400 font-medium">Chọn các trang bạn muốn xuất ra file Word (.docx)</p>
-                    </div>
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="bg-indigo-100 p-2 rounded-xl">
+                    <Download className="text-indigo-600 w-5 h-5" />
                   </div>
-                  <button 
-                    onClick={() => setShowDownloadModal(false)}
-                    className="p-2 hover:bg-slate-100 rounded-full transition-colors"
-                  >
-                    <ChevronLeft className="w-5 h-5 text-slate-400 rotate-180" />
-                  </button>
+                  <div>
+                    <h3 className="text-xl font-display font-bold text-slate-800">Tải xuống bản dịch</h3>
+                    <p className="text-[10px] text-slate-400 font-medium">Chọn các trang bạn muốn xuất ra file Word (.docx)</p>
+                  </div>
                 </div>
+                <button 
+                  onClick={() => setShowDownloadModal(false)}
+                  className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
 
+              <div className="flex-1 overflow-y-auto p-6 no-scrollbar">
                 <div className="mb-4 flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-100">
                   <div className="flex items-center gap-4">
                     <button 
@@ -3650,7 +3656,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="max-h-[400px] overflow-y-auto pr-2 grid grid-cols-5 sm:grid-cols-8 gap-2 no-scrollbar p-1">
+                <div className="grid grid-cols-5 sm:grid-cols-8 gap-2 p-1">
                   {Array.from({ length: numPages }, (_, i) => i + 1).map(pageNum => {
                     const isTranslated = translations[pageNum]?.status === 'success';
                     const isSelected = selectedPagesToDownload.includes(pageNum);
@@ -3686,26 +3692,26 @@ export default function App() {
                     );
                   })}
                 </div>
+              </div>
 
-                <div className="mt-8 flex gap-3">
-                  <button 
-                    onClick={() => setShowDownloadModal(false)}
-                    className="flex-1 px-6 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors"
-                  >
-                    Hủy
-                  </button>
-                  <button 
-                    disabled={selectedPagesToDownload.length === 0}
-                    onClick={() => {
-                      handleDownload(selectedPagesToDownload);
-                      setShowDownloadModal(false);
-                    }}
-                    className="flex-1 px-6 py-3 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
-                  >
-                    <Download className="w-4 h-4" />
-                    Tải file Word ({selectedPagesToDownload.length} trang)
-                  </button>
-                </div>
+              <div className="p-6 border-t border-slate-100 bg-slate-50 flex gap-3 shrink-0">
+                <button 
+                  onClick={() => setShowDownloadModal(false)}
+                  className="flex-1 px-6 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button 
+                  disabled={selectedPagesToDownload.length === 0}
+                  onClick={() => {
+                    handleDownload(selectedPagesToDownload);
+                    setShowDownloadModal(false);
+                  }}
+                  className="flex-1 px-6 py-3 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Tải file Word ({selectedPagesToDownload.length} trang)
+                </button>
               </div>
             </motion.div>
           </div>
