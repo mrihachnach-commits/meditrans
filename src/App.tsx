@@ -11,8 +11,8 @@ import { MedicalDictionary } from './components/MedicalDictionary';
 
 import { Logo, LogoWithText } from './components/Logo';
 
-// Use a reliable CDN for the worker that matches the installed version exactly
-// We use version 3.11.174 for maximum compatibility with mobile browsers
+import { FileExplorer, FileData } from './components/FileExplorer';
+
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js`;
 
 import { 
@@ -33,6 +33,7 @@ import {
   Trash2,
   RefreshCcw,
   Layout,
+  ArrowLeft,
   ZoomIn,
   ZoomOut,
   Maximize,
@@ -203,6 +204,8 @@ export default function App() {
   const totalJobs = Math.ceil(numPages / PAGES_PER_JOB);
 
   const [fileId, setFileId] = useState<string | null>(null);
+  const [showExplorer, setShowExplorer] = useState(true);
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [translations, setTranslations] = useState<TranslationState>({});
   const translationsRef = useRef<TranslationState>({});
   const currentPageRef = useRef<number>(1);
@@ -778,7 +781,6 @@ export default function App() {
     }
   };
 
-  const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [selectedTerm, setSelectedTerm] = useState<string | null>(null);
   const [dictionaryPosition, setDictionaryPosition] = useState({ x: 0, y: 0 });
   
@@ -827,6 +829,57 @@ export default function App() {
   useEffect(() => {
     console.log(`[MediTrans AI] Pre-loading PDF worker v${pdfjs.version}...`);
   }, []);
+
+  const handleFileSelectFromExplorer = async (fileData: FileData) => {
+    setIsPdfLoading(true);
+    setPdfError(null);
+    setFileId(fileData.id);
+    setShowExplorer(false);
+
+    // Increment fileId to invalidate all pending translations for the previous file
+    fileIdRef.current += 1;
+    
+    // Abort all pending translations
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    
+    preTranslateControllersRef.current.forEach(controller => controller.abort());
+    preTranslateControllersRef.current.clear();
+    translatingPagesRef.current.clear();
+
+    setFile(null); // We don't have a local File object
+    setTranslations({});
+    setCurrentPage(1);
+    setCurrentJob(1);
+    setAutoTranslate(false);
+
+    try {
+      // Use the TinyVault download URL
+      const url = fileData.downloadUrl;
+      setFileUrl(url);
+      
+      console.log(`[MediTrans AI] Loading PDF from TinyVault: ${fileData.name}`);
+
+      const loadingTask = pdfjs.getDocument({
+        url,
+        cMapUrl: `https://unpkg.com/pdfjs-dist@3.11.174/cmaps/`,
+        cMapPacked: true,
+        disableAutoFetch: false,
+        disableStream: false,
+      });
+
+      const pdf = await loadingTask.promise;
+      setPdfDoc(pdf);
+      setNumPages(pdf.numPages);
+    } catch (error: any) {
+      console.error("Error loading PDF from TinyVault:", error);
+      setPdfError(`Không thể tải file PDF từ TinyVault: ${error.message || "Lỗi không xác định"}`);
+    } finally {
+      setIsPdfLoading(false);
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -2114,7 +2167,22 @@ export default function App() {
       {/* Header */}
       {(!isFullScreen && !(file && window.innerWidth < 768)) && (
         <header className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4 shrink-0 shadow-sm z-30">
-        <LogoWithText />
+          {file || pdfDoc ? (
+            <button 
+              onClick={() => {
+                setPdfDoc(null);
+                setFile(null);
+                setFileUrl(null);
+                setFileId(null);
+                setShowExplorer(true);
+              }}
+              className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 mr-2"
+              title="Quay lại quản lý file"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          ) : null}
+          <LogoWithText />
 
         <div className="flex items-center gap-2">
           {file && (
@@ -2223,84 +2291,9 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 flex overflow-hidden relative bg-slate-50">
-        {!file ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-8">
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="max-w-xl w-full text-center"
-            >
-              <div className="mb-8 relative inline-block">
-                <div className="absolute -inset-4 bg-indigo-100 rounded-full blur-2xl opacity-50 animate-pulse" />
-                <div className="relative bg-white p-10 rounded-3xl shadow-xl border border-slate-100 z-10">
-                  <Logo size={80} className="mx-auto mb-8" />
-                  <h2 className="text-2xl font-display font-bold text-slate-800 mb-2">Tải lên tài liệu y khoa</h2>
-                  <p className="text-slate-500 mb-8">Hỗ trợ file PDF lên tới 200MB. Dịch thuật chuyên sâu giữ nguyên định dạng.</p>
-                  
-                  <button 
-                    onClick={() => {
-                      if (fileInputRef.current) {
-                        fileInputRef.current.click();
-                      }
-                    }}
-                    disabled={isPdfLoading}
-                    className={cn(
-                      "w-full py-4 rounded-full font-bold shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 mb-2",
-                      isPdfLoading 
-                        ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none" 
-                        : "bg-indigo-600 text-white shadow-indigo-100 hover:bg-indigo-700"
-                    )}
-                  >
-                    {isPdfLoading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        <span>Đang xử lý file...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="w-5 h-5" />
-                        <span>Chọn file PDF</span>
-                      </>
-                    )}
-                  </button>
-                  
-                  <input 
-                    ref={fileInputRef}
-                    type="file" 
-                    accept=".pdf,application/pdf" 
-                    onChange={handleFileChange}
-                    className="hidden"
-                    title="Tải lên PDF"
-                  />
-
-                  {uploadError && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="mt-4 p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-xs font-bold flex items-center justify-center gap-2"
-                    >
-                      <AlertCircle className="w-4 h-4" />
-                      {uploadError}
-                    </motion.div>
-                  )}
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-3 gap-6 text-slate-400">
-                <div className="flex flex-col items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                  <span className="text-xs font-medium uppercase tracking-wider">Chuẩn Y Khoa</span>
-                </div>
-                <div className="flex flex-col items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                  <span className="text-xs font-medium uppercase tracking-wider">Giữ Định Dạng</span>
-                </div>
-                <div className="flex flex-col items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                  <span className="text-xs font-medium uppercase tracking-wider">Tốc Độ Cao</span>
-                </div>
-              </div>
-            </motion.div>
+        {!pdfDoc ? (
+          <div className="flex-1 p-4 sm:p-8 overflow-hidden">
+            <FileExplorer onFileSelect={handleFileSelectFromExplorer} />
           </div>
         ) : (
           <div className="flex-1 flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-slate-200 min-h-0 w-full overflow-hidden relative">

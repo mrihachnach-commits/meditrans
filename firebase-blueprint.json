@@ -39,12 +39,46 @@
         "updatedAt": { "type": "string", "format": "date-time", "description": "When the translation was last updated." }
       },
       "required": ["content", "status"]
+    },
+    "Folder": {
+      "title": "Folder",
+      "description": "Folder metadata for file organization.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The name of the folder." },
+        "parentId": { "type": "string", "description": "The ID of the parent folder (null for root)." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the folder was created." }
+      },
+      "required": ["name"]
+    },
+    "Document": {
+      "title": "Document",
+      "description": "Document metadata for files stored on TinyVault.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The name of the file." },
+        "folderId": { "type": "string", "description": "The ID of the folder containing this file." },
+        "token": { "type": "string", "description": "The TinyVault token for the file." },
+        "downloadUrl": { "type": "string", "format": "uri", "description": "The download URL for the file." },
+        "size": { "type": "number", "description": "The size of the file in bytes." },
+        "type": { "type": "string", "description": "The MIME type of the file." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the file was uploaded." }
+      },
+      "required": ["name", "token", "downloadUrl"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "User",
       "description": "Collection of user profiles."
+    },
+    "/users/{userId}/folders/{folderId}": {
+      "schema": "Folder",
+      "description": "Collection of folders for the user."
+    },
+    "/users/{userId}/documents/{docId}": {
+      "schema": "Document",
+      "description": "Collection of documents for the user."
     },
     "/users/{userId}/documents/{docId}/pages/{pageNum}": {
       "schema": "Translation",

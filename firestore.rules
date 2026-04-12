@@ -116,9 +116,17 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && (isDocOwner() || isAdmin());
     }
 
-    match /users/{userId}/documents/{docId}/pages/{pageNum} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow write: if isOwner(userId) && isValidTranslation(request.resource.data);
+    match /users/{userId}/folders/{folderId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
+    match /users/{userId}/documents/{docId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+      
+      match /pages/{pageNum} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId) && isValidTranslation(request.resource.data);
+      }
     }
   }
 }
