@@ -45,6 +45,9 @@ import {
   Key,
   ShieldCheck,
   User as UserIcon,
+  UserPlus,
+  Users,
+  X,
   Square,
   Check,
   Copy
@@ -322,6 +325,17 @@ export default function App() {
   
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [isFetchingUsers, setIsFetchingUsers] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [newPasswordValue, setNewPasswordValue] = useState('');
+  const [adminNewUserEmail, setAdminNewUserEmail] = useState('');
+  const [adminNewUserPassword, setAdminNewUserPassword] = useState('');
+  const [adminNewUserDisplayName, setAdminNewUserDisplayName] = useState('');
+  const [adminNewUserRole, setAdminNewUserRole] = useState<'user' | 'admin'>('user');
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -433,18 +447,26 @@ export default function App() {
           const userRef = doc(db, 'users', currentUser.uid);
           const userSnap = await getDoc(userRef);
           if (!userSnap.exists()) {
+            const initialRole = (currentUser.email === "mrihachnach@gmail.com" || currentUser.email === "admin@gmail.com") ? 'admin' : 'user';
             await setDoc(userRef, {
               uid: currentUser.uid,
               email: currentUser.email,
               displayName: currentUser.displayName,
               photoURL: currentUser.photoURL,
               createdAt: serverTimestamp(),
-              role: 'user'
+              role: initialRole
             });
+            setUserRole(initialRole);
+          } else {
+            const data = userSnap.data();
+            setUserRole(data?.role || 'user');
           }
         } catch (error) {
           handleFirestoreError(error, OperationType.WRITE, path);
         }
+      } else {
+        setUserRole(null);
+        setShowAdminPanel(false);
       }
     });
     return () => unsubscribe();
@@ -490,25 +512,9 @@ export default function App() {
 
     try {
       if (authMode === 'register') {
-        const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
-        await updateProfile(userCredential.user, { displayName: authDisplayName });
-        
-        // Add default key to vault for new users
-        try {
-          await addDoc(collection(db, 'apiKeys'), {
-            ownerId: userCredential.user.uid,
-            name: 'Key Hệ Thống Mặc Định',
-            value: 'AIzaSyAafP-Y07NOB01sVKhK_3h6c28oY33Q_JE',
-            engine: 'gemini',
-            createdAt: serverTimestamp(),
-            status: 'active'
-          });
-        } catch (keyError) {
-          handleFirestoreError(keyError, OperationType.WRITE, 'apiKeys');
-        }
-
-        // Update local user state immediately for better UX
-        setUser({ ...userCredential.user, displayName: authDisplayName } as User);
+        setAuthError("Đăng ký đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên.");
+        setIsLoggingIn(false);
+        return;
       } else {
         await signInWithEmailAndPassword(auth, authEmail, authPassword);
       }
@@ -566,6 +572,96 @@ export default function App() {
       if (selectedKeyId === keyId) setSelectedKeyId(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  };
+
+  const fetchAllUsers = async () => {
+    if (userRole !== 'admin' || !user) return;
+    setIsFetchingUsers(true);
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (data.users) setAllUsers(data.users);
+    } catch (e) {
+      console.error("Failed to fetch users:", e);
+    } finally {
+      setIsFetchingUsers(false);
+    }
+  };
+
+  const createNewUser = async (userData: any) => {
+    if (userRole !== 'admin' || !user) return;
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/create-user', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(userData)
+      });
+      const data = await response.json();
+      if (data.success) {
+        fetchAllUsers();
+        return true;
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (e: any) {
+      console.error("Create user failed:", e);
+      throw e;
+    }
+  };
+
+  const resetUserPassword = async (uid: string, newPassword: string) => {
+    if (userRole !== 'admin' || !user) return;
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ uid, newPassword })
+      });
+      const data = await response.json();
+      if (data.success) {
+        return true;
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (e: any) {
+      console.error("Reset password failed:", e);
+      throw e;
+    }
+  };
+
+  const changeOwnPassword = async (newPassword: string) => {
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/user/change-password', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ newPassword })
+      });
+      const data = await response.json();
+      if (data.success) {
+        return true;
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (e: any) {
+      console.error("Change password failed:", e);
+      throw e;
     }
   };
 
@@ -2902,16 +2998,18 @@ export default function App() {
                 </form>
 
                 <p className="mt-8 text-center text-xs text-slate-500">
-                  {authMode === 'login' ? 'Chưa có tài khoản?' : 'Đã có tài khoản?'}
-                  <button 
-                    onClick={() => {
-                      setAuthMode(authMode === 'login' ? 'register' : 'login');
-                      setAuthError(null);
-                    }}
-                    className="ml-1.5 text-indigo-600 font-bold hover:underline"
-                  >
-                    {authMode === 'login' ? 'Đăng ký ngay' : 'Đăng nhập ngay'}
-                  </button>
+                  {authMode === 'login' ? 'Chưa có tài khoản? Vui lòng liên hệ quản trị viên.' : 'Đã có tài khoản?'}
+                  {authMode === 'register' && (
+                    <button 
+                      onClick={() => {
+                        setAuthMode('login');
+                        setAuthError(null);
+                      }}
+                      className="ml-1.5 text-indigo-600 font-bold hover:underline"
+                    >
+                      Đăng nhập ngay
+                    </button>
+                  )}
                 </p>
               </div>
             </motion.div>
@@ -3122,6 +3220,121 @@ export default function App() {
                 </div>
                 
                 <div className="space-y-6">
+                  {/* User Profile Section */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center overflow-hidden">
+                        {user ? (
+                          <img 
+                            src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || 'User'}&background=6366f1&color=fff`} 
+                            alt="Avatar" 
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <UserIcon className="w-5 h-5 text-indigo-600" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">{user ? (user.displayName || user.email) : 'Khách'}</p>
+                        <p className="text-[10px] text-slate-500">{user ? (userRole === 'admin' ? 'Quản trị viên' : 'Người dùng') : 'Đăng nhập để lưu Key'}</p>
+                      </div>
+                    </div>
+                    {user ? (
+                      <div className="flex gap-2">
+                        {userRole === 'admin' && (
+                          <button 
+                            onClick={() => {
+                              setShowSettings(false);
+                              setShowAdminPanel(true);
+                              fetchAllUsers();
+                            }}
+                            className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg text-[10px] font-bold hover:bg-amber-200 transition-all"
+                          >
+                            Quản trị
+                          </button>
+                        )}
+                        <button 
+                          onClick={handleLogout}
+                          className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                          title="Đăng xuất"
+                        >
+                          <LogOut className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => {
+                          setShowSettings(false);
+                          setShowAuthModal(true);
+                        }}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100"
+                      >
+                        Đăng nhập
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Change Password Section */}
+                  {user && (
+                    <div className="pt-4 border-t border-slate-100">
+                      <button 
+                        onClick={() => setShowChangePassword(!showChangePassword)}
+                        className="flex items-center justify-between w-full text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-indigo-500" />
+                          <label className="text-xs font-bold text-slate-700 uppercase tracking-widest">
+                            Đổi mật khẩu
+                          </label>
+                        </div>
+                        <ChevronRight className={cn("w-4 h-4 text-slate-400 transition-transform", showChangePassword && "rotate-90")} />
+                      </button>
+                      
+                      <AnimatePresence>
+                        {showChangePassword && (
+                          <motion.div 
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="pt-4 space-y-3">
+                              <input 
+                                type="password"
+                                placeholder="Mật khẩu mới (tối thiểu 6 ký tự)"
+                                value={newPasswordValue}
+                                onChange={(e) => setNewPasswordValue(e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                              />
+                              <button 
+                                onClick={async () => {
+                                  if (newPasswordValue.length < 6) {
+                                    alert("Mật khẩu phải có ít nhất 6 ký tự");
+                                    return;
+                                  }
+                                  try {
+                                    const success = await changeOwnPassword(newPasswordValue);
+                                    if (success) {
+                                      alert("Đã đổi mật khẩu thành công");
+                                      setNewPasswordValue('');
+                                      setShowChangePassword(false);
+                                    }
+                                  } catch (e: any) {
+                                    alert(e.message);
+                                  }
+                                }}
+                                className="w-full py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all"
+                              >
+                                Xác nhận đổi mật khẩu
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
                       API Key cho Gemini 3 Flash
@@ -3493,6 +3706,199 @@ export default function App() {
                     Tải file Word ({selectedPagesToDownload.length} trang)
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Admin Panel Modal */}
+      <AnimatePresence>
+        {showAdminPanel && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowAdminPanel(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
+                <div className="flex items-center gap-3">
+                  <div className="bg-amber-100 p-2 rounded-xl">
+                    <ShieldCheck className="text-amber-600 w-5 h-5" />
+                  </div>
+                  <h3 className="text-xl font-display font-bold text-slate-800">Quản trị hệ thống</h3>
+                </div>
+                <button 
+                  onClick={() => setShowAdminPanel(false)}
+                  className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-8 no-scrollbar">
+                {/* Create User Section */}
+                <section>
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <UserPlus className="w-3.5 h-3.5" />
+                    Tạo tài khoản mới
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    <input 
+                      type="text"
+                      placeholder="Tên hiển thị"
+                      value={adminNewUserDisplayName}
+                      onChange={(e) => setAdminNewUserDisplayName(e.target.value)}
+                      className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                    <input 
+                      type="email"
+                      placeholder="Email"
+                      value={adminNewUserEmail}
+                      onChange={(e) => setAdminNewUserEmail(e.target.value)}
+                      className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                    <input 
+                      type="password"
+                      placeholder="Mật khẩu"
+                      value={adminNewUserPassword}
+                      onChange={(e) => setAdminNewUserPassword(e.target.value)}
+                      className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                    <select 
+                      value={adminNewUserRole}
+                      onChange={(e) => setAdminNewUserRole(e.target.value as 'user' | 'admin')}
+                      className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                    >
+                      <option value="user">Người dùng</option>
+                      <option value="admin">Quản trị viên</option>
+                    </select>
+                    <button 
+                      onClick={async () => {
+                        if (!adminNewUserEmail || !adminNewUserPassword) {
+                          alert("Vui lòng nhập email và mật khẩu");
+                          return;
+                        }
+                        setIsCreatingUser(true);
+                        try {
+                          await createNewUser({
+                            email: adminNewUserEmail,
+                            password: adminNewUserPassword,
+                            displayName: adminNewUserDisplayName,
+                            role: adminNewUserRole
+                          });
+                          alert("Đã tạo tài khoản thành công");
+                          setAdminNewUserEmail('');
+                          setAdminNewUserPassword('');
+                          setAdminNewUserDisplayName('');
+                        } catch (e: any) {
+                          alert(e.message);
+                        } finally {
+                          setIsCreatingUser(false);
+                        }
+                      }}
+                      disabled={isCreatingUser}
+                      className="md:col-span-2 lg:col-span-4 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isCreatingUser ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+                      Tạo tài khoản
+                    </button>
+                  </div>
+                </section>
+
+                {/* User List Section */}
+                <section>
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Users className="w-3.5 h-3.5" />
+                      Danh sách người dùng ({allUsers.length})
+                    </h4>
+                    <button 
+                      onClick={fetchAllUsers}
+                      className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors"
+                      title="Làm mới"
+                    >
+                      <RefreshCcw className={cn("w-3.5 h-3.5", isFetchingUsers && "animate-spin")} />
+                    </button>
+                  </div>
+
+                  <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider">
+                          <tr>
+                            <th className="px-4 py-3">Người dùng</th>
+                            <th className="px-4 py-3">Vai trò</th>
+                            <th className="px-4 py-3">Ngày tạo</th>
+                            <th className="px-4 py-3 text-right">Thao tác</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {allUsers.map((u) => (
+                            <tr key={u.uid} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] font-bold text-slate-600">
+                                    {u.displayName ? u.displayName.charAt(0) : u.email.charAt(0)}
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-slate-800">{u.displayName || 'N/A'}</p>
+                                    <p className="text-[10px] text-slate-400">{u.email}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={cn(
+                                  "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter",
+                                  u.role === 'admin' ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-500"
+                                )}>
+                                  {u.role === 'admin' ? 'Admin' : 'User'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-slate-400 text-[10px]">
+                                {u.createdAt ? (u.createdAt._seconds ? new Date(u.createdAt._seconds * 1000).toLocaleDateString('vi-VN') : 'N/A') : 'N/A'}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <button 
+                                  onClick={async () => {
+                                    const newPass = prompt(`Nhập mật khẩu mới cho ${u.email}:`);
+                                    if (newPass && newPass.length >= 6) {
+                                      const success = await resetUserPassword(u.uid, newPass);
+                                      if (success) alert("Đã đổi mật khẩu thành công");
+                                    } else if (newPass) {
+                                      alert("Mật khẩu phải có ít nhất 6 ký tự");
+                                    }
+                                  }}
+                                  className="p-2 hover:bg-indigo-50 text-indigo-500 rounded-lg transition-colors"
+                                  title="Đặt lại mật khẩu"
+                                >
+                                  <Key className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end">
+                <button 
+                  onClick={() => setShowAdminPanel(false)}
+                  className="px-6 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all"
+                >
+                  Đóng
+                </button>
               </div>
             </motion.div>
           </div>
