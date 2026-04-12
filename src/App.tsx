@@ -1159,19 +1159,34 @@ export default function App() {
       
       let fullContent = "";
       let lastUpdateTime = Date.now();
+      let lastSaveTime = Date.now();
       let firstChunkReceived = false;
       const UPDATE_INTERVAL = 100; // Update UI every 100ms for smooth streaming without lag
+      const SAVE_INTERVAL = 5000; // Save to Firestore every 5 seconds for persistence
 
       for await (const chunk of stream) {
         if (!firstChunkReceived) {
           firstChunkReceived = true;
-          console.log(`[MediTrans] Đã nhận phản hồi đầu tiên sau ${Date.now() - startTime}ms`);
+          console.log(`[MediTrans] Đ nhận phản hồi đầu tiên sau ${Date.now() - startTime}ms`);
         }
         fullContent += chunk;
         const now = Date.now();
+        
+        // Update UI
         if (now - lastUpdateTime > UPDATE_INTERVAL) {
           setActiveTranslation({ page: targetPage, content: fullContent, status: 'loading' });
           lastUpdateTime = now;
+        }
+
+        // Periodic sync to Firestore for persistence
+        if (user && fileId && now - lastSaveTime > SAVE_INTERVAL && fullContent.length > 0) {
+          lastSaveTime = now;
+          // Fire and forget periodic save
+          setDoc(doc(db, 'users', user.uid, 'documents', fileId, 'pages', targetPage.toString()), {
+            content: fullContent,
+            status: 'loading',
+            updatedAt: serverTimestamp()
+          }, { merge: true }).catch(err => console.warn("Failed periodic sync:", err));
         }
       }
       
@@ -1188,16 +1203,19 @@ export default function App() {
         
         // Sync to Firestore if user is logged in
         if (user && fileId) {
-          const path = `users/${user.uid}/documents/${fileId}/pages/${targetPage}`;
+          console.log(`[MediTrans] Đang lưu bản dịch trang ${targetPage} lên Firestore...`);
           try {
             await setDoc(doc(db, 'users', user.uid, 'documents', fileId, 'pages', targetPage.toString()), {
               content: fullContent,
               status: 'success',
               updatedAt: serverTimestamp()
             });
+            console.log(`[MediTrans] Đã lưu thành công trang ${targetPage} lên Firestore.`);
           } catch (e) {
             console.error("Failed to sync translation to Firestore:", e);
           }
+        } else {
+          console.warn("[MediTrans] Không thể lưu lên Firestore: User hoặc FileId không khả dụng", { hasUser: !!user, fileId });
         }
       }
       setActiveTranslation(null);
@@ -1221,7 +1239,7 @@ export default function App() {
         abortControllerRef.current = null;
       }
     }
-  }, [currentPage, translationService]);
+  }, [currentPage, translationService, user, fileId]);
 
   const preTranslatePage = useCallback(async (pageNum: number, signal?: AbortSignal) => {
     if (!pdfDoc || !translationService.current || pageNum > numPages) return;
@@ -1278,12 +1296,16 @@ export default function App() {
         
         let fullContent = "";
         let lastUpdateTime = Date.now();
+        let lastSaveTime = Date.now();
         const UPDATE_INTERVAL = 150;
+        const SAVE_INTERVAL = 8000; // Pre-translation saves less frequently
 
         for await (const chunk of stream) {
           if (signal?.aborted) break;
           fullContent += chunk;
           const now = Date.now();
+          
+          // Update UI
           if (now - lastUpdateTime > UPDATE_INTERVAL) {
             // If the user has moved to this page while it was being pre-translated, show progress
             if (pageNum === currentPageRef.current) {
@@ -1291,6 +1313,16 @@ export default function App() {
               setIsTranslating(true);
             }
             lastUpdateTime = now;
+          }
+
+          // Periodic sync to Firestore
+          if (user && fileId && now - lastSaveTime > SAVE_INTERVAL && fullContent.length > 0) {
+            lastSaveTime = now;
+            setDoc(doc(db, 'users', user.uid, 'documents', fileId, 'pages', pageNum.toString()), {
+              content: fullContent,
+              status: 'loading',
+              updatedAt: serverTimestamp()
+            }, { merge: true }).catch(err => console.warn("Failed periodic pre-sync:", err));
           }
         }
         
@@ -1390,7 +1422,8 @@ export default function App() {
           Object.keys(remoteTranslations).forEach(page => {
             const pageNum = parseInt(page);
             // Only update if we don't have it locally or if it's currently loading/error
-            if (!newState[pageNum] || newState[pageNum].status !== 'success') {
+            // AND the page is not currently being translated locally
+            if (!newState[pageNum] || (newState[pageNum].status !== 'success' && !translatingPagesRef.current.has(pageNum))) {
               newState[pageNum] = remoteTranslations[pageNum];
             }
           });
