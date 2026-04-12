@@ -2532,7 +2532,7 @@ export default function App() {
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2 min-w-max ml-4">
+                <div className="flex items-center gap-1.5 md:gap-3 min-w-max ml-0 md:ml-4">
                   <button 
                     onClick={() => {
                       // Pre-select current page if it's translated
@@ -2543,15 +2543,17 @@ export default function App() {
                       }
                       setShowDownloadModal(true);
                     }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 uppercase tracking-tighter transition-all border border-indigo-100"
+                    className="flex items-center gap-1 px-2 md:px-3 py-1.5 rounded-lg text-[9px] md:text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 uppercase tracking-tighter transition-all border border-indigo-100"
                   >
-                    <Download className="w-3.5 h-3.5" /> Tải xuống
+                    <Download className="w-3 h-3 md:w-3.5 md:h-3.5" /> 
+                    <span className="hidden xs:inline">Tải xuống</span>
+                    <span className="xs:hidden">Tải</span>
                   </button>
                   <button 
                     onClick={() => translateCurrentPage(currentPage, true)}
                     disabled={isTranslating || isRendering}
                     className={cn(
-                      "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg",
+                      "px-2 md:px-4 py-1.5 rounded-lg text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1 md:gap-2 shadow-lg",
                       (isTranslating || isRendering)
                         ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none" 
                         : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 hover:shadow-indigo-300 active:scale-95"
@@ -2559,13 +2561,13 @@ export default function App() {
                   >
                     {isTranslating || isRendering ? (
                       <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>{isRendering ? 'Đang vẽ...' : 'Đang dịch...'}</span>
+                        <Loader2 className="w-3 h-3 md:w-3.5 md:h-3.5 animate-spin" />
+                        <span>{isRendering ? 'Vẽ...' : 'Dịch...'}</span>
                       </>
                     ) : (
                       <>
-                        <RefreshCcw className="w-3.5 h-3.5" />
-                        <span>{translations[currentPage] ? 'Dịch lại trang này' : 'Dịch trang này'}</span>
+                        <RefreshCcw className="w-3 h-3 md:w-3.5 md:h-3.5" />
+                        <span>{translations[currentPage] ? (window.innerWidth < 400 ? 'Dịch lại' : 'Dịch lại trang') : 'Dịch trang'}</span>
                       </>
                     )}
                   </button>
@@ -2950,45 +2952,75 @@ export default function App() {
 
       {/* Mobile View Toggle & Navigation Floating Bar */}
       {file && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] md:hidden flex flex-col items-center gap-3 w-[92%] max-w-[380px]">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] md:hidden flex flex-col items-center gap-3 w-[95%] max-w-[420px]">
           {/* Main Action Bar */}
-          <div className="w-full flex items-center bg-white/95 backdrop-blur-xl rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-slate-200 p-1.5 gap-1 ring-1 ring-slate-900/5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="w-full flex items-center bg-white/95 backdrop-blur-xl rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-slate-200 p-1 gap-0.5 ring-1 ring-slate-900/5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Left Actions: Settings & Delete & Hand */}
+            <div className="flex items-center gap-0.5 pl-1">
+              <button 
+                onClick={() => setShowSettings(true)}
+                className="p-2 rounded-full text-slate-500 active:bg-slate-100 transition-all"
+                title="Cài đặt"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={clearFile}
+                className="p-2 rounded-full text-rose-500 active:bg-rose-100 transition-all"
+                title="Xóa PDF"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => setIsPanning(!isPanning)}
+                className={cn(
+                  "p-2 rounded-full transition-all",
+                  isPanning ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 active:bg-slate-100"
+                )}
+                title="Hand Tool"
+              >
+                <Hand className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="w-px h-6 bg-slate-200 mx-0.5 shrink-0" />
+
             {/* View Toggle */}
-            <div className="flex bg-slate-100/80 rounded-full p-1 gap-1 shrink-0">
+            <div className="flex bg-slate-100/80 rounded-full p-0.5 gap-0.5 shrink-0">
               <button 
                 onClick={() => setMobileViewMode('pdf')}
                 className={cn(
-                  "flex items-center gap-1 px-2 py-1.5 rounded-full text-[8px] font-black uppercase tracking-wider transition-all duration-300",
+                  "flex items-center gap-0.5 px-1.5 py-1 rounded-full text-[7px] font-black uppercase tracking-tighter transition-all duration-300",
                   mobileViewMode === 'pdf' 
-                    ? "bg-white text-indigo-600 shadow-sm scale-105" 
+                    ? "bg-white text-indigo-600 shadow-sm" 
                     : "text-slate-500"
                 )}
               >
-                <FileText className="w-3 h-3" />
+                <FileText className="w-2.5 h-2.5" />
                 PDF
               </button>
               <button 
                 onClick={() => setMobileViewMode('split')}
                 className={cn(
-                  "flex items-center gap-1 px-2 py-1.5 rounded-full text-[8px] font-black uppercase tracking-wider transition-all duration-300",
+                  "flex items-center gap-0.5 px-1.5 py-1 rounded-full text-[7px] font-black uppercase tracking-tighter transition-all duration-300",
                   mobileViewMode === 'split' 
-                    ? "bg-white text-indigo-600 shadow-sm scale-105" 
+                    ? "bg-white text-indigo-600 shadow-sm" 
                     : "text-slate-500"
                 )}
               >
-                <Layout className="w-3 h-3" />
+                <Layout className="w-2.5 h-2.5" />
                 Đôi
               </button>
               <button 
                 onClick={() => setMobileViewMode('translation')}
                 className={cn(
-                  "flex items-center gap-1 px-2 py-1.5 rounded-full text-[8px] font-black uppercase tracking-wider transition-all duration-300",
+                  "flex items-center gap-0.5 px-1.5 py-1 rounded-full text-[7px] font-black uppercase tracking-tighter transition-all duration-300",
                   mobileViewMode === 'translation' 
-                    ? "bg-white text-indigo-600 shadow-sm scale-105" 
+                    ? "bg-white text-indigo-600 shadow-sm" 
                     : "text-slate-500"
                 )}
               >
-                <Languages className="w-3 h-3" />
+                <Languages className="w-2.5 h-2.5" />
                 Dịch
               </button>
             </div>
@@ -2996,21 +3028,19 @@ export default function App() {
             <div className="w-px h-6 bg-slate-200 mx-0.5 shrink-0" />
             
             {/* Navigation */}
-            <div className="flex-1 flex items-center justify-center gap-1">
+            <div className="flex-1 flex items-center justify-center gap-0">
               <button 
                 onClick={() => {
                   setCurrentPage(p => Math.max(1, p - 1));
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
                 disabled={currentPage === 1}
-                className="p-2 text-slate-600 disabled:opacity-20 active:scale-75 transition-all"
+                className="p-1.5 text-slate-600 disabled:opacity-20 active:scale-75 transition-all"
               >
-                <ChevronLeft className="w-5 h-5" />
+                <ChevronLeft className="w-4 h-4" />
               </button>
               
-              <div className="flex flex-col items-center min-w-[40px]">
-                <span className="text-[11px] font-black text-slate-800 leading-none">{currentPage}/{numPages}</span>
-              </div>
+              <span className="text-[10px] font-black text-slate-800 min-w-[30px] text-center">{currentPage}/{numPages}</span>
               
               <button 
                 onClick={() => {
@@ -3018,26 +3048,25 @@ export default function App() {
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
                 disabled={currentPage === numPages}
-                className="p-2 text-slate-600 disabled:opacity-20 active:scale-75 transition-all"
+                className="p-1.5 text-slate-600 disabled:opacity-20 active:scale-75 transition-all"
               >
-                <ChevronRight className="w-5 h-5" />
+                <ChevronRight className="w-4 h-4" />
               </button>
             </div>
 
             <div className="w-px h-6 bg-slate-200 mx-0.5 shrink-0" />
 
-            {/* Actions */}
-            <div className="flex items-center gap-1 shrink-0">
+            {/* Right Actions */}
+            <div className="flex items-center gap-0.5 pr-1 shrink-0">
               <button 
                 onClick={() => translateCurrentPage(currentPage, true)}
                 disabled={isTranslating || isRendering}
                 className={cn(
-                  "p-2.5 rounded-full transition-all",
+                  "p-2 rounded-full transition-all",
                   (isTranslating || isRendering)
-                    ? "bg-slate-50 text-slate-300"
-                    : "bg-indigo-50 text-indigo-600 active:bg-indigo-100"
+                    ? "text-slate-300"
+                    : "text-indigo-600 active:bg-indigo-50"
                 )}
-                title="Dịch lại trang này"
               >
                 <RefreshCcw className={cn("w-4 h-4", (isTranslating || isRendering) && "animate-spin")} />
               </button>
@@ -3045,34 +3074,15 @@ export default function App() {
               <button 
                 onClick={() => setAutoTranslate(!autoTranslate)}
                 className={cn(
-                  "p-2.5 rounded-full transition-all",
-                  autoTranslate 
-                    ? "bg-emerald-100 text-emerald-600 shadow-inner" 
-                    : "bg-slate-100 text-slate-400"
+                  "p-2 rounded-full transition-all relative",
+                  autoTranslate ? "text-emerald-600" : "text-slate-400"
                 )}
-                title="Tự động dịch"
               >
                 <div className={cn(
-                  "w-1.5 h-1.5 rounded-full absolute top-2 right-2",
+                  "w-1 h-1 rounded-full absolute top-1.5 right-1.5",
                   autoTranslate ? "bg-emerald-500 animate-pulse" : "hidden"
                 )} />
                 <Languages className="w-4 h-4" />
-              </button>
-
-              <button 
-                onClick={() => setShowSettings(true)}
-                className="p-2.5 rounded-full bg-slate-100 text-slate-500 active:bg-slate-200 transition-all"
-                title="Cài đặt"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-
-              <button 
-                onClick={clearFile}
-                className="p-2.5 rounded-full bg-rose-50 text-rose-500 active:bg-rose-100 transition-all"
-                title="Xóa PDF"
-              >
-                <Trash2 className="w-4 h-4" />
               </button>
             </div>
           </div>
