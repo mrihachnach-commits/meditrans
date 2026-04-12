@@ -52,7 +52,9 @@ import {
   X,
   Square,
   Check,
-  Copy
+  Copy,
+  Folder,
+  Home
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -80,6 +82,7 @@ import {
   getDocs, 
   query, 
   where, 
+  orderBy,
   onSnapshot, 
   deleteDoc, 
   updateDoc, 
@@ -267,6 +270,34 @@ export default function App() {
   const [selectedPagesToDownload, setSelectedPagesToDownload] = useState<number[]>([]);
   const [hasEnvKey, setHasEnvKey] = useState(false);
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
+  const [isLocalOnly, setIsLocalOnly] = useState(false);
+  const [showFolderSelectModal, setShowFolderSelectModal] = useState(false);
+  const [allFolders, setAllFolders] = useState<{id: string, name: string}[]>([]);
+
+  // Sync folders for late upload selection
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const q = query(collection(db, `users/${user.uid}/folders`), orderBy('name'));
+    return onSnapshot(q, (snapshot) => {
+      const folderList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data().name
+      }));
+      setAllFolders(folderList);
+    });
+  }, []);
+
+  const handleLocalFileOpen = (localFile: File) => {
+    setFile(localFile);
+    setFileUrl(URL.createObjectURL(localFile));
+    setIsLocalOnly(true);
+    setFileId(null);
+    setTranslations({});
+    setNumPages(0);
+    setCurrentPage(1);
+  };
 
   const startUpload = async (fileToUpload: File, folderId: string | null) => {
     const user = auth.currentUser;
@@ -303,6 +334,9 @@ export default function App() {
           type: fileToUpload.type,
           createdAt: serverTimestamp()
         });
+
+        setIsLocalOnly(false);
+        setShowFolderSelectModal(false);
 
         setUploadTasks(prev => prev.map(t => 
           t.id === taskId ? { ...t, status: 'success' } : t
@@ -896,6 +930,7 @@ export default function App() {
     setPdfError(null);
     setFileId(fileData.id);
     setShowExplorer(false);
+    setIsLocalOnly(false);
 
     // Increment fileId to invalidate all pending translations for the previous file
     fileIdRef.current += 1;
@@ -2355,7 +2390,11 @@ export default function App() {
         <UploadStatus tasks={uploadTasks} onDismiss={dismissUploadTask} />
         {!pdfDoc ? (
           <div className="flex-1 p-4 sm:p-8 overflow-hidden">
-            <FileExplorer onFileSelect={handleFileSelectFromExplorer} onUploadStart={startUpload} />
+            <FileExplorer 
+              onFileSelect={handleFileSelectFromExplorer} 
+              onUploadStart={startUpload} 
+              onLocalFileOpen={handleLocalFileOpen}
+            />
           </div>
         ) : (
           <div className="flex-1 flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-slate-200 min-h-0 w-full overflow-hidden relative">
@@ -2369,6 +2408,18 @@ export default function App() {
                 <div className="flex items-center gap-3 min-w-max">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] hidden lg:block">Original</span>
+                    
+                    {isLocalOnly && (
+                      <button 
+                        onClick={() => setShowFolderSelectModal(true)}
+                        className="flex items-center gap-1.5 px-3 py-1 bg-amber-500 text-white text-[10px] font-bold rounded-full hover:bg-amber-600 transition-all shadow-sm ml-2"
+                        title="Tải tệp này lên đám mây để lưu trữ"
+                      >
+                        <Upload className="w-3 h-3" />
+                        <span>TẢI LÊN ĐÁM MÂY</span>
+                      </button>
+                    )}
+
                     {isFullScreen && (
                       <button 
                         onClick={toggleFullScreen}
@@ -3203,6 +3254,90 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Folder Selection Modal for Late Upload */}
+      <AnimatePresence>
+        {showFolderSelectModal && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowFolderSelectModal(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+            >
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="bg-amber-100 p-2 rounded-xl">
+                    <Folder className="text-amber-600 w-5 h-5" />
+                  </div>
+                  <h3 className="text-xl font-display font-bold text-slate-800">Chọn thư mục tải lên</h3>
+                </div>
+                <button 
+                  onClick={() => setShowFolderSelectModal(false)}
+                  className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar">
+                <p className="text-xs font-medium text-slate-400 px-2 mb-2 uppercase tracking-wider">Thư mục hiện có</p>
+                
+                <button 
+                  onClick={() => startUpload(file!, null)}
+                  className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-2xl transition-all text-left group border border-transparent hover:border-slate-100"
+                >
+                  <div className="bg-slate-100 p-2 rounded-xl group-hover:bg-indigo-100 transition-colors">
+                    <Home className="w-5 h-5 text-slate-500 group-hover:text-indigo-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-700">Root (Thư mục gốc)</p>
+                    <p className="text-[10px] text-slate-400">Tải trực tiếp lên thư mục chính</p>
+                  </div>
+                </button>
+
+                {allFolders.map(folder => (
+                  <button 
+                    key={folder.id}
+                    onClick={() => startUpload(file!, folder.id)}
+                    className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-2xl transition-all text-left group border border-transparent hover:border-slate-100"
+                  >
+                    <div className="bg-amber-50 p-2 rounded-xl group-hover:bg-amber-100 transition-colors">
+                      <Folder className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-700">{folder.name}</p>
+                      <p className="text-[10px] text-slate-400">ID: {folder.id}</p>
+                    </div>
+                  </button>
+                ))}
+
+                {allFolders.length === 0 && (
+                  <div className="py-8 text-center">
+                    <p className="text-sm text-slate-400">Chưa có thư mục nào. Bạn có thể tải lên Root.</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                <button 
+                  onClick={() => setShowFolderSelectModal(false)}
+                  className="px-6 py-2 text-slate-500 text-sm font-bold hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  Hủy bỏ
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Settings Modal */}
       <AnimatePresence>

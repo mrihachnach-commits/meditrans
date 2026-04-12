@@ -57,9 +57,10 @@ export interface FileData {
 interface FileExplorerProps {
   onFileSelect: (file: FileData) => void;
   onUploadStart: (file: File, folderId: string | null) => void;
+  onLocalFileOpen: (file: File) => void;
 }
 
-export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect, onUploadStart }) => {
+export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect, onUploadStart, onLocalFileOpen }) => {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [folders, setFolders] = useState<FolderData[]>([]);
   const [files, setFiles] = useState<FileData[]>([]);
@@ -123,6 +124,13 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect, onUplo
     } catch (error) {
       console.error("Error creating folder:", error);
     }
+  };
+
+  const handleLocalOpen = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    onLocalFileOpen(file);
+    e.target.value = '';
   };
 
   const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -238,7 +246,13 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect, onUplo
           >
             <FolderPlus className="w-5 h-5" />
           </button>
-          <label className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 cursor-pointer">
+          
+          <label className="p-2.5 bg-white border border-slate-200 text-indigo-600 rounded-xl hover:bg-slate-50 transition-all shadow-sm cursor-pointer" title="Mở tệp cục bộ (Không tải lên)">
+            <FileText className="w-5 h-5" />
+            <input type="file" className="hidden" accept=".pdf" onChange={handleLocalOpen} />
+          </label>
+
+          <label className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 cursor-pointer" title="Tải lên đám mây">
             <Upload className="w-5 h-5" />
             <input type="file" className="hidden" accept=".pdf" onChange={handleUploadFile} />
           </label>
