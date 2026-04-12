@@ -446,8 +446,12 @@ export default function App() {
         try {
           const userRef = doc(db, 'users', currentUser.uid);
           const userSnap = await getDoc(userRef);
+          
+          // CRITICAL: Always check if this specific email should be admin
+          const isAdminEmail = currentUser.email === "mrihachnach@gmail.com" || currentUser.email === "admin@gmail.com";
+          
           if (!userSnap.exists()) {
-            const initialRole = (currentUser.email === "mrihachnach@gmail.com" || currentUser.email === "admin@gmail.com") ? 'admin' : 'user';
+            const initialRole = isAdminEmail ? 'admin' : 'user';
             await setDoc(userRef, {
               uid: currentUser.uid,
               email: currentUser.email,
@@ -459,7 +463,13 @@ export default function App() {
             setUserRole(initialRole);
           } else {
             const data = userSnap.data();
-            setUserRole(data?.role || 'user');
+            // If it's an admin email but role is not admin, update it
+            if (isAdminEmail && data?.role !== 'admin') {
+              await updateDoc(userRef, { role: 'admin' });
+              setUserRole('admin');
+            } else {
+              setUserRole(data?.role || 'user');
+            }
           }
         } catch (error) {
           handleFirestoreError(error, OperationType.WRITE, path);
@@ -2932,27 +2942,14 @@ export default function App() {
                     <UserIcon className="text-white w-6 h-6" />
                   </div>
                   <h3 className="text-2xl font-display font-bold text-slate-800">
-                    {authMode === 'login' ? 'Chào mừng trở lại' : 'Tạo tài khoản mới'}
+                    Chào mừng trở lại
                   </h3>
                   <p className="text-slate-500 text-sm mt-1">
-                    {authMode === 'login' ? 'Đăng nhập để quản lý API Key của bạn' : 'Bắt đầu lưu trữ Key an toàn ngay hôm nay'}
+                    Đăng nhập để quản lý API Key của bạn
                   </p>
                 </div>
 
                 <form onSubmit={handleEmailAuth} className="space-y-4">
-                  {authMode === 'register' && (
-                    <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tên hiển thị</label>
-                      <input 
-                        type="text"
-                        required
-                        value={authDisplayName}
-                        onChange={(e) => setAuthDisplayName(e.target.value)}
-                        placeholder="VD: Nguyễn Văn A"
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
-                      />
-                    </div>
-                  )}
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Email</label>
                     <input 
@@ -2992,24 +2989,13 @@ export default function App() {
                     {isLoggingIn ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      authMode === 'login' ? 'Đăng nhập' : 'Đăng ký'
+                      'Đăng nhập'
                     )}
                   </button>
                 </form>
 
                 <p className="mt-8 text-center text-xs text-slate-500">
-                  {authMode === 'login' ? 'Chưa có tài khoản? Vui lòng liên hệ quản trị viên.' : 'Đã có tài khoản?'}
-                  {authMode === 'register' && (
-                    <button 
-                      onClick={() => {
-                        setAuthMode('login');
-                        setAuthError(null);
-                      }}
-                      className="ml-1.5 text-indigo-600 font-bold hover:underline"
-                    >
-                      Đăng nhập ngay
-                    </button>
-                  )}
+                  Chưa có tài khoản? Vui lòng liên hệ quản trị viên.
                 </p>
               </div>
             </motion.div>
