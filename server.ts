@@ -2,8 +2,6 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import admin from "firebase-admin";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { getAuth } from "firebase-admin/auth";
 import fs from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -24,175 +22,134 @@ process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
 
 // Initialize Firebase Admin
 if (admin.apps.length === 0) {
-  console.log("Initializing Firebase Admin for project:", firebaseConfig.projectId);
   admin.initializeApp({
     projectId: firebaseConfig.projectId,
   });
 }
 
-// Get services with explicit database ID
-const db = getFirestore(firebaseConfig.firestoreDatabaseId);
-const auth = getAuth();
-
-const app = express();
-
-app.use(express.json());
-
-// Global Request Logger
-app.use((req, res, next) => {
-  console.log(`[Server] ${req.method} ${req.url}`);
-  next();
-});
-
-// Middleware to check if user is admin
-const checkAdmin = async (req: any, res: any, next: any) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  const idToken = authHeader.split("Bearer ")[1];
-  if (!idToken || idToken === "null" || idToken === "undefined") {
-    console.error("Token is missing or null");
-    return res.status(401).json({ error: "Invalid token: Token is missing or null" });
-  }
-  try {
-    // Manual decode for debugging
-    const parts = idToken.split('.');
-    if (parts.length === 3) {
-      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-      console.log("Token Payload AUD:", payload.aud);
-      
-      // Check if token project matches config project
-      const tokenProjectId = payload.iss?.split('/').pop();
-      if (tokenProjectId && tokenProjectId !== firebaseConfig.projectId) {
-        console.warn(`Project ID mismatch! Token: ${tokenProjectId}, Config: ${firebaseConfig.projectId}`);
-      }
-    }
-    
-    console.log("Verifying token for project:", firebaseConfig.projectId);
-    
-    // Use the modular auth instance
-    const decodedToken = await auth.verifyIdToken(idToken);
-    console.log("Token verified for UID:", decodedToken.uid);
-    
-    let userData: any = null;
-    try {
-      const userDoc = await db.collection("users").doc(decodedToken.uid).get();
-      userData = userDoc.data();
-    } catch (dbError: any) {
-      console.error("Firestore access failed during checkAdmin:", dbError.message);
-    }
-    
-    // Hardcoded admin check as fallback
-    const isAdmin = userData?.role === "admin" || 
-                    decodedToken.email === "mrihachnach@gmail.com" || 
-                    decodedToken.email === "admin@gmail.com";
-
-    if (!isAdmin) {
-      return res.status(403).json({ error: "Forbidden: Admin access required" });
-    }
-    req.user = decodedToken;
-    next();
-  } catch (error: any) {
-    console.error("Token verification failed:", error.message);
-    
-    if (error.message.includes('identitytoolkit.googleapis.com') || error.message.includes('SERVICE_DISABLED')) {
-      const projectId = firebaseConfig.projectId;
-      const numericProjectId = error.message.match(/project=([0-9]+)/)?.[1] || "your-project-id";
-      return res.status(401).json({ 
-        error: "Identity Toolkit API is disabled for this project.",
-        details: `Bạn cần kích hoạt Identity Toolkit API trong Google Cloud Console cho dự án ${projectId}. Truy cập: https://console.developers.google.com/apis/api/identitytoolkit.googleapis.com/overview?project=${numericProjectId}`,
-        code: 'auth/api-disabled'
-      });
-    }
-
-    if (error.code === 'auth/project-not-found' || error.message.includes('NOT_FOUND')) {
-      return res.status(401).json({ 
-        error: `Invalid token: Project ${firebaseConfig.projectId} not found or mismatch.`,
-        code: error.code
-      });
-    }
-    res.status(401).json({ error: `Invalid token: ${error.message}` });
-  }
-};
-
-// API Routes
-
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", project: firebaseConfig.projectId });
-});
-
-// Admin: Create User
-app.post("/api/admin/create-user", checkAdmin, async (req, res) => {
-  const { email, password, displayName, role } = req.body;
-  console.log(`[Admin] Creating user: ${email}, role: ${role}`);
-  try {
-    const userRecord = await auth.createUser({
-      email,
-      password,
-      displayName,
-    });
-    
-    await db.collection("users").doc(userRecord.uid).set({
-      uid: userRecord.uid,
-      email,
-      displayName,
-      role: role || "user",
-      createdAt: FieldValue.serverTimestamp(),
-    });
-    
-    res.json({ success: true, uid: userRecord.uid });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Admin: Reset Password
-app.post("/api/admin/reset-password", checkAdmin, async (req, res) => {
-  const { uid, newPassword } = req.body;
-  try {
-    await auth.updateUser(uid, {
-      password: newPassword,
-    });
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// User: Change own password
-app.post("/api/user/change-password", async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  const idToken = authHeader.split("Bearer ")[1];
-  const { newPassword } = req.body;
-  
-  try {
-    const decodedToken = await auth.verifyIdToken(idToken);
-    await auth.updateUser(decodedToken.uid, {
-      password: newPassword,
-    });
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Admin: List Users
-app.get("/api/admin/users", checkAdmin, async (req, res) => {
-  try {
-    const usersSnapshot = await db.collection("users").get();
-    const users = usersSnapshot.docs.map(doc => doc.data());
-    res.json({ users });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
+const db = admin.firestore();
+const auth = admin.auth();
 
 async function startServer() {
+  const app = express();
   const PORT = 3000;
+
+  app.use(express.json());
+  console.log("Admin Project ID:", admin.apps[0]?.options.projectId);
+
+  // Middleware to check if user is admin
+  const checkAdmin = async (req: any, res: any, next: any) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const idToken = authHeader.split("Bearer ")[1];
+    if (!idToken || idToken === "null" || idToken === "undefined") {
+      console.error("Token is missing or null");
+      return res.status(401).json({ error: "Invalid token: Token is missing or null" });
+    }
+    try {
+      // Manual decode for debugging
+      const parts = idToken.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+        console.log("Token Payload AUD:", payload.aud);
+        console.log("Token Payload ISS:", payload.iss);
+      }
+      
+      console.log("Verifying token for project:", firebaseConfig.projectId);
+      console.log("Token prefix:", idToken.substring(0, 15));
+      const decodedToken = await auth.verifyIdToken(idToken);
+      console.log("Token verified for UID:", decodedToken.uid);
+      const userDoc = await db.collection("users").doc(decodedToken.uid).get();
+      const userData = userDoc.data();
+      
+      // Hardcoded admin check as fallback (same as firestore.rules)
+      const isAdmin = userData?.role === "admin" || 
+                      decodedToken.email === "mrihachnach@gmail.com" || 
+                      decodedToken.email === "admin@gmail.com";
+
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Forbidden: Admin access required" });
+      }
+      req.user = decodedToken;
+      next();
+    } catch (error: any) {
+      console.error("Token verification failed:", error.message);
+      res.status(401).json({ error: `Invalid token: ${error.message}` });
+    }
+  };
+
+  // API Routes
+  
+  // Admin: Create User
+  app.post("/api/admin/create-user", checkAdmin, async (req, res) => {
+    const { email, password, displayName, role } = req.body;
+    try {
+      const userRecord = await auth.createUser({
+        email,
+        password,
+        displayName,
+      });
+      
+      // Create user document in Firestore
+      await db.collection("users").doc(userRecord.uid).set({
+        uid: userRecord.uid,
+        email,
+        displayName,
+        role: role || "user",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      
+      res.json({ success: true, uid: userRecord.uid });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Admin: Reset Password for any user
+  app.post("/api/admin/reset-password", checkAdmin, async (req, res) => {
+    const { uid, newPassword } = req.body;
+    try {
+      await auth.updateUser(uid, {
+        password: newPassword,
+      });
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // User: Change own password
+  app.post("/api/user/change-password", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const idToken = authHeader.split("Bearer ")[1];
+    const { newPassword } = req.body;
+    
+    try {
+      const decodedToken = await auth.verifyIdToken(idToken);
+      await auth.updateUser(decodedToken.uid, {
+        password: newPassword,
+      });
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Admin: List Users
+  app.get("/api/admin/users", checkAdmin, async (req, res) => {
+    try {
+      const usersSnapshot = await db.collection("users").get();
+      const users = usersSnapshot.docs.map(doc => doc.data());
+      res.json({ users });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

@@ -199,12 +199,6 @@ interface TranslationState {
 }
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null);
-  const [showAdminPanel, setShowAdminPanel] = useState(false);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-
   const [file, setFile] = useState<File | null>(null);
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [numPages, setNumPages] = useState(0);
@@ -282,10 +276,8 @@ export default function App() {
 
   // Sync folders for late upload selection
   useEffect(() => {
-    if (!user) {
-      setAllFolders([]);
-      return;
-    }
+    const user = auth.currentUser;
+    if (!user) return;
 
     const q = query(collection(db, `users/${user.uid}/folders`), orderBy('name'));
     return onSnapshot(q, (snapshot) => {
@@ -293,12 +285,9 @@ export default function App() {
         id: doc.id,
         name: doc.data().name
       }));
-      console.log(`[MediTrans AI] Fetched ${folderList.length} folders for user`);
       setAllFolders(folderList);
-    }, (error) => {
-      console.error("Error fetching folders:", error);
     });
-  }, [user]);
+  }, []);
 
   const handleLocalFileOpen = async (localFile: File) => {
     setIsPdfLoading(true);
@@ -373,21 +362,24 @@ export default function App() {
       const formData = new FormData();
       formData.append('file', fileToUpload);
 
-      console.log(`[MediTrans AI] Direct upload to TinyVault: ${fileToUpload.name}`);
-      
       const response = await fetch('https://tinyvault.space/api/upload', {
         method: 'POST',
         body: formData
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("TinyVault direct upload failed:", response.status, errorText);
-        throw new Error(`TinyVault upload failed with status ${response.status}`);
+        let errorMessage = `Upload failed with status ${response.status}`;
+        try {
+          const errorData = await response.json();
+          console.error("Direct upload failed:", errorData);
+          errorMessage = errorData.details || errorData.error || errorMessage;
+        } catch (e) {
+          console.error("Could not parse error response", e);
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
-      console.log("[MediTrans AI] TinyVault upload success:", data);
       
       if (data.token) {
         await addDoc(collection(db, `users/${user.uid}/documents`), {
@@ -456,12 +448,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    // API Health Check
-    fetch('/api/health')
-      .then(res => res.json())
-      .then(data => console.log("[MediTrans AI] API Health Check:", data))
-      .catch(err => console.error("[MediTrans AI] API Health Check Failed:", err));
-
     const handleFullScreenChange = () => {
       const isNativeFull = !!document.fullscreenElement;
       setIsFullScreen(isNativeFull);
@@ -492,6 +478,10 @@ export default function App() {
   const [fontSize, setFontSize] = useState(14);
   const [fontFamily, setFontFamily] = useState('Inter');
   
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [isFetchingUsers, setIsFetchingUsers] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -501,6 +491,7 @@ export default function App() {
   const [adminNewUserDisplayName, setAdminNewUserDisplayName] = useState('');
   const [adminNewUserRole, setAdminNewUserRole] = useState<'user' | 'admin'>('user');
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [authEmail, setAuthEmail] = useState('');
@@ -757,13 +748,6 @@ export default function App() {
       const response = await fetch('/api/admin/users', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      
-      if (!response.ok) {
-        const text = await response.text();
-        console.error("Fetch users failed:", response.status, text);
-        return;
-      }
-
       const data = await response.json();
       if (data.users) setAllUsers(data.users);
     } catch (e) {
@@ -785,18 +769,6 @@ export default function App() {
         },
         body: JSON.stringify(userData)
       });
-
-      if (!response.ok) {
-        const text = await response.text();
-        console.error("Create user request failed:", response.status, text);
-        try {
-          const errorData = JSON.parse(text);
-          throw new Error(errorData.error || `Lỗi ${response.status}`);
-        } catch (e) {
-          throw new Error(`Lỗi server (${response.status}). Vui lòng kiểm tra log.`);
-        }
-      }
-
       const data = await response.json();
       if (data.success) {
         fetchAllUsers();
@@ -822,18 +794,6 @@ export default function App() {
         },
         body: JSON.stringify({ uid, newPassword })
       });
-
-      if (!response.ok) {
-        const text = await response.text();
-        console.error("Reset password failed:", response.status, text);
-        try {
-          const errorData = JSON.parse(text);
-          throw new Error(errorData.error || `Lỗi ${response.status}`);
-        } catch (e) {
-          throw new Error(`Lỗi server (${response.status})`);
-        }
-      }
-
       const data = await response.json();
       if (data.success) {
         return true;
