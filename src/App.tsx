@@ -373,18 +373,21 @@ export default function App() {
       const formData = new FormData();
       formData.append('file', fileToUpload);
 
-      const response = await fetch('/api/proxy-upload', {
+      console.log(`[MediTrans AI] Direct upload to TinyVault: ${fileToUpload.name}`);
+      
+      const response = await fetch('https://tinyvault.space/api/upload', {
         method: 'POST',
         body: formData
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Upload proxy failed:", errorData);
-        throw new Error(errorData.details || errorData.error || `Upload failed with status ${response.status}`);
+        const errorText = await response.text();
+        console.error("TinyVault direct upload failed:", response.status, errorText);
+        throw new Error(`TinyVault upload failed with status ${response.status}`);
       }
 
       const data = await response.json();
+      console.log("[MediTrans AI] TinyVault upload success:", data);
       
       if (data.token) {
         await addDoc(collection(db, `users/${user.uid}/documents`), {
@@ -453,6 +456,12 @@ export default function App() {
   };
 
   useEffect(() => {
+    // API Health Check
+    fetch('/api/health')
+      .then(res => res.json())
+      .then(data => console.log("[MediTrans AI] API Health Check:", data))
+      .catch(err => console.error("[MediTrans AI] API Health Check Failed:", err));
+
     const handleFullScreenChange = () => {
       const isNativeFull = !!document.fullscreenElement;
       setIsFullScreen(isNativeFull);
@@ -748,6 +757,13 @@ export default function App() {
       const response = await fetch('/api/admin/users', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+      
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("Fetch users failed:", response.status, text);
+        return;
+      }
+
       const data = await response.json();
       if (data.users) setAllUsers(data.users);
     } catch (e) {
@@ -769,6 +785,18 @@ export default function App() {
         },
         body: JSON.stringify(userData)
       });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("Create user request failed:", response.status, text);
+        try {
+          const errorData = JSON.parse(text);
+          throw new Error(errorData.error || `Lỗi ${response.status}`);
+        } catch (e) {
+          throw new Error(`Lỗi server (${response.status}). Vui lòng kiểm tra log.`);
+        }
+      }
+
       const data = await response.json();
       if (data.success) {
         fetchAllUsers();
@@ -794,6 +822,18 @@ export default function App() {
         },
         body: JSON.stringify({ uid, newPassword })
       });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("Reset password failed:", response.status, text);
+        try {
+          const errorData = JSON.parse(text);
+          throw new Error(errorData.error || `Lỗi ${response.status}`);
+        } catch (e) {
+          throw new Error(`Lỗi server (${response.status})`);
+        }
+      }
+
       const data = await response.json();
       if (data.success) {
         return true;

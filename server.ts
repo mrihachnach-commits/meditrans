@@ -5,9 +5,6 @@ import admin from "firebase-admin";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import fs from "fs";
-import multer from "multer";
-import FormData from "form-data";
-import axios from "axios";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,202 +34,165 @@ if (admin.apps.length === 0) {
 const db = getFirestore(firebaseConfig.firestoreDatabaseId);
 const auth = getAuth();
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
 
-  app.use(express.json());
-  console.log("Admin Project ID:", admin.apps[0]?.options.projectId);
+app.use(express.json());
 
-  const upload = multer({ storage: multer.memoryStorage() });
+// Global Request Logger
+app.use((req, res, next) => {
+  console.log(`[Server] ${req.method} ${req.url}`);
+  next();
+});
 
-  // Proxy TinyVault Upload
-  app.post("/api/proxy-upload", upload.single("file"), async (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-
-    try {
-      const formData = new FormData();
-      formData.append("file", req.file.buffer, {
-        filename: req.file.originalname,
-        contentType: req.file.mimetype,
-      });
-
-      console.log(`Proxying upload to TinyVault: ${req.file.originalname} (${req.file.size} bytes)`);
-
-      const response = await axios.post("https://tinyvault.space/api/upload", formData, {
-        headers: {
-          ...formData.getHeaders(),
-        },
-        timeout: 30000, // 30 seconds timeout
-      });
-
-      console.log("TinyVault response success");
-      res.json(response.data);
-    } catch (error: any) {
-      const errorData = error?.response?.data;
-      const errorMessage = error?.message;
-      console.error("Proxy upload error:", errorData || errorMessage);
+// Middleware to check if user is admin
+const checkAdmin = async (req: any, res: any, next: any) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const idToken = authHeader.split("Bearer ")[1];
+  if (!idToken || idToken === "null" || idToken === "undefined") {
+    console.error("Token is missing or null");
+    return res.status(401).json({ error: "Invalid token: Token is missing or null" });
+  }
+  try {
+    // Manual decode for debugging
+    const parts = idToken.split('.');
+    if (parts.length === 3) {
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+      console.log("Token Payload AUD:", payload.aud);
       
-      // Check for Vercel timeout or network issues
-      if (error.code === 'ECONNABORTED') {
-        return res.status(504).json({ error: "Upload to TinyVault timed out. Please try a smaller file or check your connection." });
+      // Check if token project matches config project
+      const tokenProjectId = payload.iss?.split('/').pop();
+      if (tokenProjectId && tokenProjectId !== firebaseConfig.projectId) {
+        console.warn(`Project ID mismatch! Token: ${tokenProjectId}, Config: ${firebaseConfig.projectId}`);
       }
-
-      res.status(500).json({ 
-        error: "Failed to proxy upload to TinyVault", 
-        details: errorData || errorMessage,
-        status: error?.response?.status
-      });
     }
-  });
-
-  // Middleware to check if user is admin
-  const checkAdmin = async (req: any, res: any, next: any) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    const idToken = authHeader.split("Bearer ")[1];
-    if (!idToken || idToken === "null" || idToken === "undefined") {
-      console.error("Token is missing or null");
-      return res.status(401).json({ error: "Invalid token: Token is missing or null" });
-    }
-    try {
-      // Manual decode for debugging
-      const parts = idToken.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-        console.log("Token Payload AUD:", payload.aud);
-        console.log("Token Payload ISS:", payload.iss);
-        
-        // Check if token project matches config project
-        const tokenProjectId = payload.iss?.split('/').pop();
-        if (tokenProjectId && tokenProjectId !== firebaseConfig.projectId) {
-          console.warn(`Project ID mismatch! Token: ${tokenProjectId}, Config: ${firebaseConfig.projectId}`);
-        }
-      }
-      
-      console.log("Verifying token for project:", firebaseConfig.projectId);
-      
-      // Ensure we are using the correct auth instance
-      const decodedToken = await admin.auth().verifyIdToken(idToken);
-      console.log("Token verified for UID:", decodedToken.uid);
-      
-      let userData: any = null;
-      try {
-        const userDoc = await db.collection("users").doc(decodedToken.uid).get();
-        userData = userDoc.data();
-      } catch (dbError: any) {
-        console.error("Firestore access failed during checkAdmin:", dbError.message);
-        // If firestore fails, we still have the token info
-      }
-      
-      // Hardcoded admin check as fallback (same as firestore.rules)
-      const isAdmin = userData?.role === "admin" || 
-                      decodedToken.email === "mrihachnach@gmail.com" || 
-                      decodedToken.email === "admin@gmail.com";
-
-      if (!isAdmin) {
-        return res.status(403).json({ error: "Forbidden: Admin access required" });
-      }
-      req.user = decodedToken;
-      next();
-    } catch (error: any) {
-      console.error("Token verification failed:", error.message);
-      
-      // Handle Identity Toolkit API disabled error
-      if (error.message.includes('identitytoolkit.googleapis.com') || error.message.includes('SERVICE_DISABLED')) {
-        const projectId = firebaseConfig.projectId;
-        const numericProjectId = error.message.match(/project=([0-9]+)/)?.[1] || "your-project-id";
-        return res.status(401).json({ 
-          error: "Identity Toolkit API is disabled for this project.",
-          details: `Bạn cần kích hoạt Identity Toolkit API trong Google Cloud Console cho dự án ${projectId}. Truy cập: https://console.developers.google.com/apis/api/identitytoolkit.googleapis.com/overview?project=${numericProjectId}`,
-          code: 'auth/api-disabled'
-        });
-      }
-
-      if (error.code === 'auth/project-not-found' || error.message.includes('NOT_FOUND')) {
-        return res.status(401).json({ 
-          error: `Invalid token: Project ${firebaseConfig.projectId} not found or mismatch. Please check your Firebase configuration.`,
-          code: error.code
-        });
-      }
-      res.status(401).json({ error: `Invalid token: ${error.message}` });
-    }
-  };
-
-  // API Routes
-  
-  // Admin: Create User
-  app.post("/api/admin/create-user", checkAdmin, async (req, res) => {
-    const { email, password, displayName, role } = req.body;
-    try {
-      const userRecord = await auth.createUser({
-        email,
-        password,
-        displayName,
-      });
-      
-      // Create user document in Firestore
-      await db.collection("users").doc(userRecord.uid).set({
-        uid: userRecord.uid,
-        email,
-        displayName,
-        role: role || "user",
-        createdAt: FieldValue.serverTimestamp(),
-      });
-      
-      res.json({ success: true, uid: userRecord.uid });
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  });
-
-  // Admin: Reset Password for any user
-  app.post("/api/admin/reset-password", checkAdmin, async (req, res) => {
-    const { uid, newPassword } = req.body;
-    try {
-      await auth.updateUser(uid, {
-        password: newPassword,
-      });
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  });
-
-  // User: Change own password
-  app.post("/api/user/change-password", async (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    const idToken = authHeader.split("Bearer ")[1];
-    const { newPassword } = req.body;
     
+    console.log("Verifying token for project:", firebaseConfig.projectId);
+    
+    // Use the modular auth instance
+    const decodedToken = await auth.verifyIdToken(idToken);
+    console.log("Token verified for UID:", decodedToken.uid);
+    
+    let userData: any = null;
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      await auth.updateUser(decodedToken.uid, {
-        password: newPassword,
-      });
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      const userDoc = await db.collection("users").doc(decodedToken.uid).get();
+      userData = userDoc.data();
+    } catch (dbError: any) {
+      console.error("Firestore access failed during checkAdmin:", dbError.message);
     }
-  });
+    
+    // Hardcoded admin check as fallback
+    const isAdmin = userData?.role === "admin" || 
+                    decodedToken.email === "mrihachnach@gmail.com" || 
+                    decodedToken.email === "admin@gmail.com";
 
-  // Admin: List Users
-  app.get("/api/admin/users", checkAdmin, async (req, res) => {
-    try {
-      const usersSnapshot = await db.collection("users").get();
-      const users = usersSnapshot.docs.map(doc => doc.data());
-      res.json({ users });
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+    if (!isAdmin) {
+      return res.status(403).json({ error: "Forbidden: Admin access required" });
     }
-  });
+    req.user = decodedToken;
+    next();
+  } catch (error: any) {
+    console.error("Token verification failed:", error.message);
+    
+    if (error.message.includes('identitytoolkit.googleapis.com') || error.message.includes('SERVICE_DISABLED')) {
+      const projectId = firebaseConfig.projectId;
+      const numericProjectId = error.message.match(/project=([0-9]+)/)?.[1] || "your-project-id";
+      return res.status(401).json({ 
+        error: "Identity Toolkit API is disabled for this project.",
+        details: `Bạn cần kích hoạt Identity Toolkit API trong Google Cloud Console cho dự án ${projectId}. Truy cập: https://console.developers.google.com/apis/api/identitytoolkit.googleapis.com/overview?project=${numericProjectId}`,
+        code: 'auth/api-disabled'
+      });
+    }
+
+    if (error.code === 'auth/project-not-found' || error.message.includes('NOT_FOUND')) {
+      return res.status(401).json({ 
+        error: `Invalid token: Project ${firebaseConfig.projectId} not found or mismatch.`,
+        code: error.code
+      });
+    }
+    res.status(401).json({ error: `Invalid token: ${error.message}` });
+  }
+};
+
+// API Routes
+
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", project: firebaseConfig.projectId });
+});
+
+// Admin: Create User
+app.post("/api/admin/create-user", checkAdmin, async (req, res) => {
+  const { email, password, displayName, role } = req.body;
+  console.log(`[Admin] Creating user: ${email}, role: ${role}`);
+  try {
+    const userRecord = await auth.createUser({
+      email,
+      password,
+      displayName,
+    });
+    
+    await db.collection("users").doc(userRecord.uid).set({
+      uid: userRecord.uid,
+      email,
+      displayName,
+      role: role || "user",
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    
+    res.json({ success: true, uid: userRecord.uid });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Admin: Reset Password
+app.post("/api/admin/reset-password", checkAdmin, async (req, res) => {
+  const { uid, newPassword } = req.body;
+  try {
+    await auth.updateUser(uid, {
+      password: newPassword,
+    });
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// User: Change own password
+app.post("/api/user/change-password", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const idToken = authHeader.split("Bearer ")[1];
+  const { newPassword } = req.body;
+  
+  try {
+    const decodedToken = await auth.verifyIdToken(idToken);
+    await auth.updateUser(decodedToken.uid, {
+      password: newPassword,
+    });
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Admin: List Users
+app.get("/api/admin/users", checkAdmin, async (req, res) => {
+  try {
+    const usersSnapshot = await db.collection("users").get();
+    const users = usersSnapshot.docs.map(doc => doc.data());
+    res.json({ users });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+async function startServer() {
+  const PORT = 3000;
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
