@@ -276,8 +276,10 @@ export default function App() {
 
   // Sync folders for late upload selection
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
+    if (!user) {
+      setAllFolders([]);
+      return;
+    }
 
     const q = query(collection(db, `users/${user.uid}/folders`), orderBy('name'));
     return onSnapshot(q, (snapshot) => {
@@ -285,9 +287,12 @@ export default function App() {
         id: doc.id,
         name: doc.data().name
       }));
+      console.log(`[MediTrans AI] Fetched ${folderList.length} folders for user`);
       setAllFolders(folderList);
+    }, (error) => {
+      console.error("Error fetching folders:", error);
     });
-  }, []);
+  }, [user]);
 
   const handleLocalFileOpen = async (localFile: File) => {
     setIsPdfLoading(true);

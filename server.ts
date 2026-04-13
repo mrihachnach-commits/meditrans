@@ -2,6 +2,8 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import admin from "firebase-admin";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
 import fs from "fs";
 import multer from "multer";
 import FormData from "form-data";
@@ -25,14 +27,15 @@ process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
 
 // Initialize Firebase Admin
 if (admin.apps.length === 0) {
+  console.log("Initializing Firebase Admin for project:", firebaseConfig.projectId);
   admin.initializeApp({
     projectId: firebaseConfig.projectId,
-    // On Vercel, it sometimes needs explicit project ID in the credential
   });
 }
 
-const db = admin.firestore();
-const auth = admin.auth();
+// Get services with explicit database ID
+const db = getFirestore(firebaseConfig.firestoreDatabaseId);
+const auth = getAuth();
 
 async function startServer() {
   const app = express();
@@ -56,17 +59,27 @@ async function startServer() {
         contentType: req.file.mimetype,
       });
 
+      console.log(`Proxying upload to TinyVault: ${req.file.originalname} (${req.file.size} bytes)`);
+
       const response = await axios.post("https://tinyvault.space/api/upload", formData, {
         headers: {
           ...formData.getHeaders(),
         },
+        timeout: 30000, // 30 seconds timeout
       });
 
+      console.log("TinyVault response success");
       res.json(response.data);
     } catch (error: any) {
       const errorData = error?.response?.data;
       const errorMessage = error?.message;
       console.error("Proxy upload error:", errorData || errorMessage);
+      
+      // Check for Vercel timeout or network issues
+      if (error.code === 'ECONNABORTED') {
+        return res.status(504).json({ error: "Upload to TinyVault timed out. Please try a smaller file or check your connection." });
+      }
+
       res.status(500).json({ 
         error: "Failed to proxy upload to TinyVault", 
         details: errorData || errorMessage,
@@ -128,6 +141,18 @@ async function startServer() {
       next();
     } catch (error: any) {
       console.error("Token verification failed:", error.message);
+      
+      // Handle Identity Toolkit API disabled error
+      if (error.message.includes('identitytoolkit.googleapis.com') || error.message.includes('SERVICE_DISABLED')) {
+        const projectId = firebaseConfig.projectId;
+        const numericProjectId = error.message.match(/project=([0-9]+)/)?.[1] || "your-project-id";
+        return res.status(401).json({ 
+          error: "Identity Toolkit API is disabled for this project.",
+          details: `Bạn cần kích hoạt Identity Toolkit API trong Google Cloud Console cho dự án ${projectId}. Truy cập: https://console.developers.google.com/apis/api/identitytoolkit.googleapis.com/overview?project=${numericProjectId}`,
+          code: 'auth/api-disabled'
+        });
+      }
+
       if (error.code === 'auth/project-not-found' || error.message.includes('NOT_FOUND')) {
         return res.status(401).json({ 
           error: `Invalid token: Project ${firebaseConfig.projectId} not found or mismatch. Please check your Firebase configuration.`,
@@ -156,7 +181,7 @@ async function startServer() {
         email,
         displayName,
         role: role || "user",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
       });
       
       res.json({ success: true, uid: userRecord.uid });
