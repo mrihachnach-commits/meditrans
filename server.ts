@@ -27,6 +27,7 @@ process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
 if (admin.apps.length === 0) {
   admin.initializeApp({
     projectId: firebaseConfig.projectId,
+    // On Vercel, it sometimes needs explicit project ID in the credential
   });
 }
 
@@ -92,14 +93,28 @@ async function startServer() {
         const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
         console.log("Token Payload AUD:", payload.aud);
         console.log("Token Payload ISS:", payload.iss);
+        
+        // Check if token project matches config project
+        const tokenProjectId = payload.iss?.split('/').pop();
+        if (tokenProjectId && tokenProjectId !== firebaseConfig.projectId) {
+          console.warn(`Project ID mismatch! Token: ${tokenProjectId}, Config: ${firebaseConfig.projectId}`);
+        }
       }
       
       console.log("Verifying token for project:", firebaseConfig.projectId);
-      console.log("Token prefix:", idToken.substring(0, 15));
-      const decodedToken = await auth.verifyIdToken(idToken);
+      
+      // Ensure we are using the correct auth instance
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
       console.log("Token verified for UID:", decodedToken.uid);
-      const userDoc = await db.collection("users").doc(decodedToken.uid).get();
-      const userData = userDoc.data();
+      
+      let userData: any = null;
+      try {
+        const userDoc = await db.collection("users").doc(decodedToken.uid).get();
+        userData = userDoc.data();
+      } catch (dbError: any) {
+        console.error("Firestore access failed during checkAdmin:", dbError.message);
+        // If firestore fails, we still have the token info
+      }
       
       // Hardcoded admin check as fallback (same as firestore.rules)
       const isAdmin = userData?.role === "admin" || 
@@ -113,6 +128,12 @@ async function startServer() {
       next();
     } catch (error: any) {
       console.error("Token verification failed:", error.message);
+      if (error.code === 'auth/project-not-found' || error.message.includes('NOT_FOUND')) {
+        return res.status(401).json({ 
+          error: `Invalid token: Project ${firebaseConfig.projectId} not found or mismatch. Please check your Firebase configuration.`,
+          code: error.code
+        });
+      }
       res.status(401).json({ error: `Invalid token: ${error.message}` });
     }
   };
