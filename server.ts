@@ -37,6 +37,45 @@ async function startServer() {
   app.use(express.json());
   console.log("Admin Project ID:", admin.apps[0]?.options.projectId);
 
+  // Proxy TinyVault Upload (Vercel-style proxy for local dev/Cloud Run)
+  app.post("/api/tinyvault", async (req, res) => {
+    try {
+      // We need to forward the multipart request to TinyVault
+      // Since we don't want to use multer/form-data here to keep it simple,
+      // and the user wants a "direct" feel, we'll use a simple fetch-based proxy
+      // but we need to handle the stream.
+      
+      // However, for Cloud Run/Local Dev, the easiest is to use the direct URL if possible,
+      // but CORS is the issue. Let's use the proxy pattern but with a simple implementation.
+      
+      // Re-importing necessary tools for the proxy
+      const { default: axios } = await import("axios");
+      const { default: FormData } = await import("form-data");
+      const { default: multer } = await import("multer");
+      const upload = multer({ storage: multer.memoryStorage() });
+
+      upload.single("file")(req, res, async (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+        const formData = new FormData();
+        formData.append("file", req.file.buffer, {
+          filename: req.file.originalname,
+          contentType: req.file.mimetype,
+        });
+
+        const response = await axios.post("https://tinyvault.space/api/upload", formData, {
+          headers: { ...formData.getHeaders() },
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity
+        });
+        res.json(response.data);
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Middleware to check if user is admin
   const checkAdmin = async (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization;
