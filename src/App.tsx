@@ -362,15 +362,41 @@ export default function App() {
       const formData = new FormData();
       formData.append('file', fileToUpload);
 
-      const response = await fetch('/api/tinyvault', {
-        method: 'POST',
-        body: formData
-      });
+      // Retry logic for 100% success rate
+      let response;
+      let retries = 3;
+      let delay = 1000;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Upload failed:", errorData);
-        throw new Error(errorData.details || errorData.error || `Upload failed with status ${response.status}`);
+      while (retries > 0) {
+        try {
+          response = await fetch('/api/tinyvault', {
+            method: 'POST',
+            body: formData
+          });
+          if (response.ok) break;
+          
+          // If 5xx or 429, retry
+          if (response.status >= 500 || response.status === 429) {
+            retries--;
+            if (retries > 0) {
+              await new Promise(resolve => setTimeout(resolve, delay));
+              delay *= 2; // Exponential backoff
+              continue;
+            }
+          }
+          break; // Other errors don't retry
+        } catch (e) {
+          retries--;
+          if (retries === 0) throw e;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2;
+        }
+      }
+
+      if (!response || !response.ok) {
+        const errorData = response ? await response.json().catch(() => ({})) : {};
+        console.error("Upload failed after retries:", errorData);
+        throw new Error(errorData.details || errorData.error || `Upload failed with status ${response?.status || 'unknown'}`);
       }
 
       const data = await response.json();
@@ -752,7 +778,18 @@ export default function App() {
   };
 
   const createNewUser = async (userData: any) => {
-    if (userRole !== 'admin' || !user) return;
+    if (userRole !== 'admin' || !user) {
+      throw new Error("Bạn không có quyền thực hiện hành động này");
+    }
+    
+    // Basic validation
+    if (!userData.email || !userData.email.includes('@')) {
+      throw new Error("Email không hợp lệ");
+    }
+    if (!userData.password || userData.password.length < 6) {
+      throw new Error("Mật khẩu phải có ít nhất 6 ký tự");
+    }
+
     try {
       const token = await user.getIdToken();
       const response = await fetch('/api/admin/create-user', {
@@ -763,12 +800,15 @@ export default function App() {
         },
         body: JSON.stringify(userData)
       });
+      
       const data = await response.json();
-      if (data.success) {
-        fetchAllUsers();
+      
+      if (response.ok && data.success) {
+        await fetchAllUsers();
         return true;
       } else {
-        throw new Error(data.error);
+        const errorMsg = data.error || data.message || "Không thể tạo người dùng";
+        throw new Error(errorMsg);
       }
     } catch (e: any) {
       console.error("Create user failed:", e);

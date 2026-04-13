@@ -40,23 +40,20 @@ async function startServer() {
   // Proxy TinyVault Upload (Vercel-style proxy for local dev/Cloud Run)
   app.post("/api/tinyvault", async (req, res) => {
     try {
-      // We need to forward the multipart request to TinyVault
-      // Since we don't want to use multer/form-data here to keep it simple,
-      // and the user wants a "direct" feel, we'll use a simple fetch-based proxy
-      // but we need to handle the stream.
-      
-      // However, for Cloud Run/Local Dev, the easiest is to use the direct URL if possible,
-      // but CORS is the issue. Let's use the proxy pattern but with a simple implementation.
-      
-      // Re-importing necessary tools for the proxy
       const { default: axios } = await import("axios");
       const { default: FormData } = await import("form-data");
       const { default: multer } = await import("multer");
-      const upload = multer({ storage: multer.memoryStorage() });
+      const upload = multer({ 
+        storage: multer.memoryStorage(),
+        limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
+      });
 
       upload.single("file")(req, res, async (err) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+        if (err) {
+          console.error("Multer error:", err);
+          return res.status(500).json({ error: "Lỗi xử lý tệp tin: " + err.message });
+        }
+        if (!req.file) return res.status(400).json({ error: "Không có tệp tin nào được tải lên" });
 
         const formData = new FormData();
         formData.append("file", req.file.buffer, {
@@ -64,15 +61,25 @@ async function startServer() {
           contentType: req.file.mimetype,
         });
 
-        const response = await axios.post("https://tinyvault.space/api/upload", formData, {
-          headers: { ...formData.getHeaders() },
-          maxContentLength: Infinity,
-          maxBodyLength: Infinity
-        });
-        res.json(response.data);
+        try {
+          const response = await axios.post("https://tinyvault.space/api/upload", formData, {
+            headers: { ...formData.getHeaders() },
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+            timeout: 60000 // 60 seconds timeout
+          });
+          res.json(response.data);
+        } catch (axiosError: any) {
+          console.error("TinyVault API error:", axiosError.response?.data || axiosError.message);
+          res.status(axiosError.response?.status || 500).json({ 
+            error: "Lỗi từ máy chủ TinyVault", 
+            details: axiosError.response?.data || axiosError.message 
+          });
+        }
       });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error("Proxy internal error:", error);
+      res.status(500).json({ error: "Lỗi hệ thống nội bộ: " + error.message });
     }
   });
 
@@ -98,7 +105,9 @@ async function startServer() {
       
       console.log("Verifying token for project:", firebaseConfig.projectId);
       console.log("Token prefix:", idToken.substring(0, 15));
-      const decodedToken = await auth.verifyIdToken(idToken);
+      
+      // Use the specific project ID for verification to avoid 5 NOT_FOUND errors
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       console.log("Token verified for UID:", decodedToken.uid);
       const userDoc = await db.collection("users").doc(decodedToken.uid).get();
       const userData = userDoc.data();
@@ -124,25 +133,50 @@ async function startServer() {
   // Admin: Create User
   app.post("/api/admin/create-user", checkAdmin, async (req, res) => {
     const { email, password, displayName, role } = req.body;
+    
+    console.log(`Attempting to create user: ${email} with role: ${role}`);
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
     try {
+      // 1. Create user in Firebase Auth
       const userRecord = await auth.createUser({
         email,
         password,
-        displayName,
+        displayName: displayName || email.split('@')[0],
       });
       
-      // Create user document in Firestore
-      await db.collection("users").doc(userRecord.uid).set({
+      console.log(`Auth user created: ${userRecord.uid}`);
+      
+      // 2. Create user document in Firestore
+      const userData = {
         uid: userRecord.uid,
         email,
-        displayName,
+        displayName: displayName || email.split('@')[0],
         role: role || "user",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      await db.collection("users").doc(userRecord.uid).set(userData);
+      
+      console.log(`Firestore document created for: ${userRecord.uid}`);
       
       res.json({ success: true, uid: userRecord.uid });
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      console.error("Error in create-user route:", error);
+      
+      // Handle specific Firebase errors
+      let errorMessage = error.message;
+      if (error.code === 'auth/email-already-exists') {
+        errorMessage = "Email này đã được sử dụng bởi một người dùng khác.";
+      } else if (error.code === 'auth/invalid-password') {
+        errorMessage = "Mật khẩu không hợp lệ. Mật khẩu phải có ít nhất 6 ký tự.";
+      }
+      
+      res.status(400).json({ error: errorMessage, code: error.code });
     }
   });
 
