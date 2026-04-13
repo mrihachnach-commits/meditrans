@@ -362,14 +362,14 @@ export default function App() {
       const formData = new FormData();
       formData.append('file', fileToUpload);
 
-      const response = await fetch('/api/proxy-upload', {
+      const response = await fetch('/api/tinyvault', {
         method: 'POST',
         body: formData
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error("Upload proxy failed:", errorData);
+        console.error("Upload failed:", errorData);
         throw new Error(errorData.details || errorData.error || `Upload failed with status ${response.status}`);
       }
 
