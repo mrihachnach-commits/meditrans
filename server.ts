@@ -3,6 +3,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 import admin from "firebase-admin";
 import fs from "fs";
+import multer from "multer";
+import FormData from "form-data";
+import axios from "axios";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,8 +37,45 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
   console.log("Admin Project ID:", admin.apps[0]?.options.projectId);
+
+  const upload = multer({ storage: multer.memoryStorage() });
+
+  // Proxy TinyVault Upload
+  app.post("/api/proxy-upload", upload.single("file"), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("file", req.file.buffer, {
+        filename: req.file.originalname,
+        contentType: req.file.mimetype,
+      });
+
+      const response = await axios.post("https://tinyvault.space/api/upload", formData, {
+        headers: {
+          ...formData.getHeaders(),
+        },
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity
+      });
+
+      res.json(response.data);
+    } catch (error: any) {
+      const errorData = error?.response?.data;
+      const errorMessage = error?.message;
+      console.error("Proxy upload error:", errorData || errorMessage);
+      res.status(500).json({ 
+        error: "Failed to proxy upload to TinyVault", 
+        details: errorData || errorMessage,
+        status: error?.response?.status
+      });
+    }
+  });
 
   // Middleware to check if user is admin
   const checkAdmin = async (req: any, res: any, next: any) => {

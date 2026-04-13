@@ -362,21 +362,15 @@ export default function App() {
       const formData = new FormData();
       formData.append('file', fileToUpload);
 
-      const response = await fetch('https://tinyvault.space/api/upload', {
+      const response = await fetch('/api/proxy-upload', {
         method: 'POST',
         body: formData
       });
 
       if (!response.ok) {
-        let errorMessage = `Upload failed with status ${response.status}`;
-        try {
-          const errorData = await response.json();
-          console.error("Direct upload failed:", errorData);
-          errorMessage = errorData.details || errorData.error || errorMessage;
-        } catch (e) {
-          console.error("Could not parse error response", e);
-        }
-        throw new Error(errorMessage);
+        const errorData = await response.json();
+        console.error("Upload proxy failed:", errorData);
+        throw new Error(errorData.details || errorData.error || `Upload failed with status ${response.status}`);
       }
 
       const data = await response.json();
