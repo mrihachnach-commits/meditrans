@@ -199,6 +199,12 @@ interface TranslationState {
 }
 
 export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   const [file, setFile] = useState<File | null>(null);
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [numPages, setNumPages] = useState(0);
@@ -477,10 +483,6 @@ export default function App() {
   const [fontSize, setFontSize] = useState(14);
   const [fontFamily, setFontFamily] = useState('Inter');
   
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null);
-  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [isFetchingUsers, setIsFetchingUsers] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -490,7 +492,6 @@ export default function App() {
   const [adminNewUserDisplayName, setAdminNewUserDisplayName] = useState('');
   const [adminNewUserRole, setAdminNewUserRole] = useState<'user' | 'admin'>('user');
   const [isCreatingUser, setIsCreatingUser] = useState(false);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [authEmail, setAuthEmail] = useState('');
