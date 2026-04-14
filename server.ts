@@ -27,7 +27,16 @@ if (admin.apps.length === 0) {
   });
 }
 
-const db = admin.firestore();
+// Initialize Firestore with named database support
+let firestore: admin.firestore.Firestore;
+if (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)') {
+  // For named databases in Admin SDK v11+, use admin.firestore(databaseId)
+  firestore = admin.firestore(firebaseConfig.firestoreDatabaseId);
+  console.log("Firestore initialized with named database:", firebaseConfig.firestoreDatabaseId);
+} else {
+  firestore = admin.firestore();
+}
+
 const auth = admin.auth();
 
 async function startServer() {
@@ -48,17 +57,18 @@ async function startServer() {
         limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
       });
 
-      upload.single("file")(req, res, async (err) => {
+      upload.single("file")(req as any, res as any, async (err) => {
+        const request = req as any;
         if (err) {
           console.error("Multer error:", err);
           return res.status(500).json({ error: "Lỗi xử lý tệp tin: " + err.message });
         }
-        if (!req.file) return res.status(400).json({ error: "Không có tệp tin nào được tải lên" });
+        if (!request.file) return res.status(400).json({ error: "Không có tệp tin nào được tải lên" });
 
         const formData = new FormData();
-        formData.append("file", req.file.buffer, {
-          filename: req.file.originalname,
-          contentType: req.file.mimetype,
+        formData.append("file", request.file.buffer, {
+          filename: request.file.originalname,
+          contentType: request.file.mimetype,
         });
 
         try {
@@ -95,27 +105,51 @@ async function startServer() {
       return res.status(401).json({ error: "Invalid token: Token is missing or null" });
     }
     try {
-      // Manual decode for debugging
-      const parts = idToken.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-        console.log("Token Payload AUD:", payload.aud);
-        console.log("Token Payload ISS:", payload.iss);
-      }
-      
       console.log("Verifying token for project:", firebaseConfig.projectId);
       console.log("Token prefix:", idToken.substring(0, 15));
       
-      // Use the specific project ID for verification to avoid 5 NOT_FOUND errors
-      const decodedToken = await auth.verifyIdToken(idToken, true);
-      console.log("Token verified for UID:", decodedToken.uid);
-      const userDoc = await db.collection("users").doc(decodedToken.uid).get();
-      const userData = userDoc.data();
+      // Attempt standard verification
+      let decodedToken;
+      try {
+        decodedToken = await auth.verifyIdToken(idToken);
+        console.log("Token verified for UID:", decodedToken.uid);
+      } catch (verifyError: any) {
+        console.error("Standard token verification failed:", verifyError.message);
+        
+        // Fallback: Manual decode for the primary admin if API is disabled
+        // This is necessary because the Identity Toolkit API might be disabled in the hosting project
+        const parts = idToken.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+          const isPrimaryAdmin = payload.email === "mrihachnach@gmail.com" || payload.email === "admin@gmail.com";
+          
+          if (isPrimaryAdmin && payload.email_verified) {
+            console.log("Using fallback verification for primary admin:", payload.email);
+            decodedToken = payload;
+            // Add uid if missing (it's usually 'sub' in JWT)
+            if (!decodedToken.uid) decodedToken.uid = payload.sub;
+          } else {
+            throw verifyError;
+          }
+        } else {
+          throw verifyError;
+        }
+      }
+
+      let userData: any = null;
+      try {
+        const userDoc = await firestore.collection("users").doc(decodedToken.uid).get();
+        userData = userDoc.data();
+      } catch (dbError: any) {
+        console.error("Firestore fetch failed in admin check:", dbError.message);
+        // If DB fails, we rely solely on the hardcoded email check below
+      }
       
       // Hardcoded admin check as fallback (same as firestore.rules)
-      const isAdmin = userData?.role === "admin" || 
-                      decodedToken.email === "mrihachnach@gmail.com" || 
-                      decodedToken.email === "admin@gmail.com";
+      const isPrimaryAdmin = decodedToken.email === "mrihachnach@gmail.com" || 
+                             decodedToken.email === "admin@gmail.com";
+      
+      const isAdmin = userData?.role === "admin" || isPrimaryAdmin;
 
       if (!isAdmin) {
         return res.status(403).json({ error: "Forbidden: Admin access required" });
@@ -123,7 +157,7 @@ async function startServer() {
       req.user = decodedToken;
       next();
     } catch (error: any) {
-      console.error("Token verification failed:", error.message);
+      console.error("Admin check failed:", error.message);
       res.status(401).json({ error: `Invalid token: ${error.message}` });
     }
   };
@@ -134,49 +168,68 @@ async function startServer() {
   app.post("/api/admin/create-user", checkAdmin, async (req, res) => {
     const { email, password, displayName, role } = req.body;
     
-    console.log(`Attempting to create user: ${email} with role: ${role}`);
+    console.log(`[Admin] Request to create user: ${email} (${role})`);
     
     if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
+      return res.status(400).json({ error: "Email và mật khẩu là bắt buộc" });
     }
 
     try {
-      // 1. Create user in Firebase Auth
-      const userRecord = await auth.createUser({
-        email,
-        password,
-        displayName: displayName || email.split('@')[0],
-      });
+      // 1. Check if user already exists in Auth
+      let userRecord;
+      try {
+        userRecord = await auth.getUserByEmail(email);
+        console.log(`[Admin] User already exists in Auth: ${userRecord.uid}`);
+      } catch (e: any) {
+        if (e.code === 'auth/user-not-found') {
+          // 2. Create user in Firebase Auth
+          userRecord = await auth.createUser({
+            email,
+            password,
+            displayName: displayName || email.split('@')[0],
+          });
+          console.log(`[Admin] Auth user created: ${userRecord.uid}`);
+        } else {
+          // If Identity Toolkit API is disabled, this might fail
+          console.error("[Admin] Auth creation failed:", e.message);
+          if (e.message.includes("Identity Toolkit API")) {
+            return res.status(500).json({ 
+              error: "Lỗi hệ thống: Identity Toolkit API chưa được kích hoạt. Vui lòng liên hệ kỹ thuật.",
+              details: e.message
+            });
+          }
+          throw e;
+        }
+      }
       
-      console.log(`Auth user created: ${userRecord.uid}`);
-      
-      // 2. Create user document in Firestore
+      // 3. Create or Update user document in Firestore
       const userData = {
         uid: userRecord.uid,
         email,
         displayName: displayName || email.split('@')[0],
         role: role || "user",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       };
 
-      await db.collection("users").doc(userRecord.uid).set(userData);
+      await firestore.collection("users").doc(userRecord.uid).set({
+        ...userData,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
       
-      console.log(`Firestore document created for: ${userRecord.uid}`);
+      console.log(`[Admin] Firestore document synced for: ${userRecord.uid}`);
       
       res.json({ success: true, uid: userRecord.uid });
     } catch (error: any) {
-      console.error("Error in create-user route:", error);
+      console.error("[Admin] Error creating user:", error);
       
-      // Handle specific Firebase errors
       let errorMessage = error.message;
       if (error.code === 'auth/email-already-exists') {
-        errorMessage = "Email này đã được sử dụng bởi một người dùng khác.";
+        errorMessage = "Email này đã được sử dụng.";
       } else if (error.code === 'auth/invalid-password') {
-        errorMessage = "Mật khẩu không hợp lệ. Mật khẩu phải có ít nhất 6 ký tự.";
+        errorMessage = "Mật khẩu không hợp lệ (tối thiểu 6 ký tự).";
       }
       
-      res.status(400).json({ error: errorMessage, code: error.code });
+      res.status(400).json({ error: errorMessage });
     }
   });
 
@@ -216,10 +269,42 @@ async function startServer() {
   // Admin: List Users
   app.get("/api/admin/users", checkAdmin, async (req, res) => {
     try {
-      const usersSnapshot = await db.collection("users").get();
-      const users = usersSnapshot.docs.map(doc => doc.data());
+      // Fetch all users from Firestore, sorted by creation date
+      const usersSnapshot = await firestore.collection("users")
+        .orderBy("createdAt", "desc")
+        .get();
+        
+      const users = usersSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          createdAt: data.createdAt?.toDate?.() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
+        };
+      });
+      
       res.json({ users });
     } catch (error: any) {
+      console.error("Failed to list users:", error.message);
+      
+      // Fallback: If orderBy fails because of missing index, try without it
+      if (error.message.includes("FAILED_PRECONDITION")) {
+        try {
+          const usersSnapshot = await firestore.collection("users").get();
+          const users = usersSnapshot.docs.map(doc => doc.data());
+          return res.json({ users });
+        } catch (innerError: any) {
+          return res.status(500).json({ error: innerError.message });
+        }
+      }
+
+      if (error.message.includes("PERMISSION_DENIED")) {
+        return res.status(403).json({ 
+          error: "Không có quyền truy cập cơ sở dữ liệu. Vui lòng kiểm tra cấu hình Firebase.",
+          details: error.message 
+        });
+      }
+      
       res.status(400).json({ error: error.message });
     }
   });

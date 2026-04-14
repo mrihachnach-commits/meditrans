@@ -33,6 +33,7 @@ import {
   Hand,
   Trash2,
   RefreshCcw,
+  KeyRound,
   Layout,
   ArrowLeft,
   ZoomIn,
@@ -504,13 +505,13 @@ export default function App() {
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [isFetchingUsers, setIsFetchingUsers] = useState(false);
-  const [showChangePassword, setShowChangePassword] = useState(false);
-  const [newPasswordValue, setNewPasswordValue] = useState('');
   const [adminNewUserEmail, setAdminNewUserEmail] = useState('');
   const [adminNewUserPassword, setAdminNewUserPassword] = useState('');
   const [adminNewUserDisplayName, setAdminNewUserDisplayName] = useState('');
   const [adminNewUserRole, setAdminNewUserRole] = useState<'user' | 'admin'>('user');
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [newPasswordValue, setNewPasswordValue] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -627,27 +628,48 @@ export default function App() {
           
           if (!userSnap.exists()) {
             const initialRole = isAdminEmail ? 'admin' : 'user';
-            await setDoc(userRef, {
-              uid: currentUser.uid,
-              email: currentUser.email,
-              displayName: currentUser.displayName,
-              photoURL: currentUser.photoURL,
-              createdAt: serverTimestamp(),
-              role: initialRole
-            });
+            try {
+              await setDoc(userRef, {
+                uid: currentUser.uid,
+                email: currentUser.email,
+                displayName: currentUser.displayName,
+                photoURL: currentUser.photoURL,
+                createdAt: serverTimestamp(),
+                role: initialRole
+              });
+            } catch (writeError) {
+              console.warn("Failed to create user doc, but continuing with local role:", writeError);
+            }
             setUserRole(initialRole);
           } else {
             const data = userSnap.data();
             // If it's an admin email but role is not admin, update it
             if (isAdminEmail && data?.role !== 'admin') {
-              await updateDoc(userRef, { role: 'admin' });
+              try {
+                await updateDoc(userRef, { role: 'admin' });
+              } catch (updateError) {
+                console.warn("Failed to update admin role in DB, but continuing with local role:", updateError);
+              }
               setUserRole('admin');
             } else {
               setUserRole(data?.role || 'user');
             }
           }
-        } catch (error) {
-          handleFirestoreError(error, OperationType.WRITE, path);
+        } catch (error: any) {
+          console.error("Error fetching user data from Firestore:", error);
+          
+          // Fallback if Firestore is completely blocked
+          const isAdminEmail = currentUser.email === "mrihachnach@gmail.com" || currentUser.email === "admin@gmail.com";
+          if (isAdminEmail) {
+            setUserRole('admin');
+          } else {
+            setUserRole('user');
+          }
+          
+          // Only show error if it's not a common permission issue during setup
+          if (!error.message?.includes('permission-denied')) {
+            handleFirestoreError(error, OperationType.WRITE, path);
+          }
         }
       } else {
         setUserRole(null);
@@ -768,6 +790,14 @@ export default function App() {
       const response = await fetch('/api/admin/users', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+      
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("Non-JSON response from server:", text.substring(0, 100));
+        throw new Error("Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại sau.");
+      }
+      
       const data = await response.json();
       if (data.users) setAllUsers(data.users);
     } catch (e) {
@@ -800,6 +830,13 @@ export default function App() {
         },
         body: JSON.stringify(userData)
       });
+      
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("Non-JSON response from server during user creation:", text.substring(0, 100));
+        throw new Error("Máy chủ trả về dữ liệu không hợp lệ khi tạo người dùng.");
+      }
       
       const data = await response.json();
       
@@ -3989,70 +4026,84 @@ export default function App() {
               <div className="flex-1 overflow-y-auto p-6 space-y-8 no-scrollbar">
                 {/* Create User Section */}
                 <section>
-                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <UserPlus className="w-3.5 h-3.5" />
-                    Thêm người dùng mới
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                    <input 
-                      type="text"
-                      placeholder="Tên hiển thị"
-                      value={adminNewUserDisplayName}
-                      onChange={(e) => setAdminNewUserDisplayName(e.target.value)}
-                      className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
-                    <input 
-                      type="email"
-                      placeholder="Email"
-                      value={adminNewUserEmail}
-                      onChange={(e) => setAdminNewUserEmail(e.target.value)}
-                      className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
-                    <input 
-                      type="password"
-                      placeholder="Mật khẩu"
-                      value={adminNewUserPassword}
-                      onChange={(e) => setAdminNewUserPassword(e.target.value)}
-                      className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
-                    <select 
-                      value={adminNewUserRole}
-                      onChange={(e) => setAdminNewUserRole(e.target.value as 'user' | 'admin')}
-                      className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
-                    >
-                      <option value="user">Người dùng</option>
-                      <option value="admin">Quản trị viên</option>
-                    </select>
-                    <button 
-                      onClick={async () => {
-                        if (!adminNewUserEmail || !adminNewUserPassword) {
-                          alert("Vui lòng nhập email và mật khẩu");
-                          return;
-                        }
-                        setIsCreatingUser(true);
-                        try {
-                          await createNewUser({
-                            email: adminNewUserEmail,
-                            password: adminNewUserPassword,
-                            displayName: adminNewUserDisplayName,
-                            role: adminNewUserRole
-                          });
-                          alert("Đã thêm người dùng thành công");
-                          setAdminNewUserEmail('');
-                          setAdminNewUserPassword('');
-                          setAdminNewUserDisplayName('');
-                        } catch (e: any) {
-                          alert(e.message);
-                        } finally {
-                          setIsCreatingUser(false);
-                        }
-                      }}
-                      disabled={isCreatingUser}
-                      className="md:col-span-2 lg:col-span-4 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      {isCreatingUser ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
-                      Thêm người dùng
-                    </button>
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-1.5 h-4 bg-indigo-500 rounded-full" />
+                    <h4 className="text-sm font-bold text-slate-800">Thêm người dùng mới</h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Tên hiển thị</label>
+                      <input 
+                        type="text"
+                        placeholder="VD: Nguyễn Văn A"
+                        value={adminNewUserDisplayName}
+                        onChange={(e) => setAdminNewUserDisplayName(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Email</label>
+                      <input 
+                        type="email"
+                        placeholder="email@example.com"
+                        value={adminNewUserEmail}
+                        onChange={(e) => setAdminNewUserEmail(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Mật khẩu</label>
+                      <input 
+                        type="password"
+                        placeholder="••••••••"
+                        value={adminNewUserPassword}
+                        onChange={(e) => setAdminNewUserPassword(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Vai trò</label>
+                      <select 
+                        value={adminNewUserRole}
+                        onChange={(e) => setAdminNewUserRole(e.target.value as 'user' | 'admin')}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer"
+                      >
+                        <option value="user">Người dùng</option>
+                        <option value="admin">Quản trị viên</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <button 
+                        onClick={async () => {
+                          if (!adminNewUserEmail || !adminNewUserPassword) {
+                            alert("Vui lòng nhập email và mật khẩu");
+                            return;
+                          }
+                          setIsCreatingUser(true);
+                          try {
+                            await createNewUser({
+                              email: adminNewUserEmail,
+                              password: adminNewUserPassword,
+                              displayName: adminNewUserDisplayName,
+                              role: adminNewUserRole
+                            });
+                            alert("Đã thêm người dùng thành công");
+                            setAdminNewUserEmail('');
+                            setAdminNewUserPassword('');
+                            setAdminNewUserDisplayName('');
+                          } catch (e: any) {
+                            alert(e.message);
+                          } finally {
+                            setIsCreatingUser(false);
+                          }
+                        }}
+                        disabled={isCreatingUser}
+                        className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-indigo-200"
+                      >
+                        {isCreatingUser ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+                        Thêm ngay
+                      </button>
+                    </div>
                   </div>
                 </section>
 
@@ -4072,61 +4123,84 @@ export default function App() {
                     </button>
                   </div>
 
-                  <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden">
+                  <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider">
+                        <thead className="bg-slate-50/50 text-slate-400 font-bold uppercase tracking-widest border-b border-slate-100">
                           <tr>
-                            <th className="px-4 py-3">Người dùng</th>
-                            <th className="px-4 py-3">Vai trò</th>
-                            <th className="px-4 py-3">Ngày tạo</th>
-                            <th className="px-4 py-3 text-right">Thao tác</th>
+                            <th className="px-6 py-4">Thông tin người dùng</th>
+                            <th className="px-6 py-4">Vai trò</th>
+                            <th className="px-6 py-4">Ngày tham gia</th>
+                            <th className="px-6 py-4 text-right">Hành động</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
-                          {allUsers.map((u) => (
-                            <tr key={u.uid} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] font-bold text-slate-600">
-                                    {u.displayName ? u.displayName.charAt(0) : u.email.charAt(0)}
-                                  </div>
-                                  <div>
-                                    <p className="font-bold text-slate-800">{u.displayName || 'N/A'}</p>
-                                    <p className="text-[10px] text-slate-400">{u.email}</p>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className={cn(
-                                  "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter",
-                                  u.role === 'admin' ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-500"
-                                )}>
-                                  {u.role === 'admin' ? 'Admin' : 'User'}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-slate-400 text-[10px]">
-                                {u.createdAt ? (u.createdAt._seconds ? new Date(u.createdAt._seconds * 1000).toLocaleDateString('vi-VN') : 'N/A') : 'N/A'}
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                <button 
-                                  onClick={async () => {
-                                    const newPass = prompt(`Nhập mật khẩu mới cho ${u.email}:`);
-                                    if (newPass && newPass.length >= 6) {
-                                      const success = await resetUserPassword(u.uid, newPass);
-                                      if (success) alert("Đã đổi mật khẩu thành công");
-                                    } else if (newPass) {
-                                      alert("Mật khẩu phải có ít nhất 6 ký tự");
-                                    }
-                                  }}
-                                  className="p-2 hover:bg-indigo-50 text-indigo-500 rounded-lg transition-colors"
-                                  title="Đặt lại mật khẩu"
-                                >
-                                  <Key className="w-3.5 h-3.5" />
-                                </button>
+                          {allUsers.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-6 py-12 text-center text-slate-400 italic">
+                                Chưa có dữ liệu người dùng
                               </td>
                             </tr>
-                          ))}
+                          ) : (
+                            allUsers.map((u) => (
+                              <tr key={u.uid} className="hover:bg-slate-50/30 transition-colors group">
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl flex items-center justify-center text-xs font-black text-slate-500 shadow-inner">
+                                      {u.displayName ? u.displayName.charAt(0).toUpperCase() : u.email.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div>
+                                      <p className="font-bold text-slate-800 text-sm">{u.displayName || 'Chưa đặt tên'}</p>
+                                      <p className="text-[10px] text-slate-400 font-medium">{u.email}</p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className={cn(
+                                    "px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider shadow-sm",
+                                    u.role === 'admin' 
+                                      ? "bg-amber-50 text-amber-600 border border-amber-100" 
+                                      : "bg-indigo-50 text-indigo-600 border border-indigo-100"
+                                  )}>
+                                    {u.role === 'admin' ? 'Quản trị viên' : 'Thành viên'}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex flex-col">
+                                    <span className="text-slate-600 font-medium">
+                                      {u.createdAt ? (typeof u.createdAt === 'string' ? new Date(u.createdAt).toLocaleDateString('vi-VN') : (u.createdAt._seconds ? new Date(u.createdAt._seconds * 1000).toLocaleDateString('vi-VN') : 'N/A')) : 'N/A'}
+                                    </span>
+                                    <span className="text-[9px] text-slate-300">
+                                      {u.uid.substring(0, 8)}...
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button 
+                                      onClick={async () => {
+                                        const newPass = prompt(`Nhập mật khẩu mới cho ${u.email}:`);
+                                        if (newPass && newPass.length >= 6) {
+                                          try {
+                                            await resetUserPassword(u.uid, newPass);
+                                            alert("Đã đổi mật khẩu thành công");
+                                          } catch (e: any) {
+                                            alert(e.message);
+                                          }
+                                        } else if (newPass) {
+                                          alert("Mật khẩu phải từ 6 ký tự");
+                                        }
+                                      }}
+                                      className="p-2 hover:bg-amber-50 text-amber-600 rounded-lg transition-colors"
+                                      title="Đổi mật khẩu"
+                                    >
+                                      <KeyRound className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
                     </div>
