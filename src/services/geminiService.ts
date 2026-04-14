@@ -124,7 +124,7 @@ export class GeminiService implements TranslationService {
 
     const prompt = `Dịch trang ${pageNumber} sang tiếng Việt.`;
 
-    const MAX_RETRIES = 5;
+    const MAX_RETRIES = 3;
     let retryCount = 0;
 
     while (retryCount <= MAX_RETRIES) {
@@ -150,9 +150,6 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0,
-            thinkingConfig: { 
-              thinkingLevel: ThinkingLevel.LOW 
-            },
           }
         });
 
@@ -192,10 +189,7 @@ export class GeminiService implements TranslationService {
         
         if ((isQuotaError || isUnavailableError) && retryCount < MAX_RETRIES) {
           retryCount++;
-          // Longer delay for quota errors to respect rate limits (min 10s for quota)
-          const baseDelay = isQuotaError ? 10000 : 2000;
-          const delay = Math.pow(2, retryCount - 1) * baseDelay + Math.random() * 2000;
-          
+          const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
           const errorType = isQuotaError ? "Quota exceeded" : "Model unavailable (503)";
           console.warn(`${errorType}. Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${MAX_RETRIES})`);
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -208,8 +202,10 @@ export class GeminiService implements TranslationService {
           throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
         }
         if (isQuotaError) {
-          throw new Error(`Hệ thống đang tạm thời hết hạn mức (Quota exceeded). 
-            Vui lòng đợi khoảng 1 phút để hệ thống tự động khôi phục hoặc nâng cấp API Key trong phần Cài đặt.`);
+          throw new Error(`Bạn đã hết hạn mức sử dụng API (Quota exceeded). 
+            Nếu bạn dùng gói miễn phí, giới hạn là 15 yêu cầu/phút. 
+            Lỗi chi tiết: ${error.message || "Resource exhausted"}.
+            Vui lòng đợi 1 phút hoặc kiểm tra lại API Key trong phần Cài đặt.`);
         }
         if (isUnavailableError) {
           throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát.");
@@ -249,7 +245,7 @@ export class GeminiService implements TranslationService {
 
     const prompt = `Dịch trang ${pageNumber} sang tiếng Việt.`;
 
-    const MAX_RETRIES = 5;
+    const MAX_RETRIES = 3;
     let retryCount = 0;
 
     while (retryCount <= MAX_RETRIES) {
@@ -275,9 +271,6 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0,
-            thinkingConfig: { 
-              thinkingLevel: ThinkingLevel.LOW 
-            },
           }
         });
 
@@ -298,9 +291,7 @@ export class GeminiService implements TranslationService {
         
         if ((isQuotaError || isUnavailableError) && retryCount < MAX_RETRIES) {
           retryCount++;
-          const baseDelay = isQuotaError ? 10000 : 2000;
-          const delay = Math.pow(2, retryCount - 1) * baseDelay + Math.random() * 2000;
-          
+          const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
           const errorType = isQuotaError ? "Quota exceeded" : "Model unavailable (503)";
           console.warn(`${errorType}. Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${MAX_RETRIES})`);
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -313,8 +304,10 @@ export class GeminiService implements TranslationService {
           throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.");
         }
         if (isQuotaError) {
-          throw new Error(`Hệ thống đang tạm thời hết hạn mức (Quota exceeded). 
-            Vui lòng đợi khoảng 1 phút để hệ thống tự động khôi phục hoặc nâng cấp API Key trong phần Cài đặt.`);
+          throw new Error(`Bạn đã hết hạn mức sử dụng API (Quota exceeded). 
+            Nếu bạn dùng gói miễn phí, giới hạn là 15 yêu cầu/phút. 
+            Lỗi chi tiết: ${error.message || "Resource exhausted"}.
+            Vui lòng đợi 1 phút hoặc kiểm tra lại API Key trong phần Cài đặt.`);
         }
         if (isUnavailableError) {
           throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát.");
@@ -346,7 +339,7 @@ export class GeminiService implements TranslationService {
 
     const prompt = `Hãy tra cứu thuật ngữ y khoa sau: "${term}"`;
 
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = 2;
     let retryCount = 0;
 
     while (retryCount <= MAX_RETRIES) {
@@ -357,9 +350,6 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0,
-            thinkingConfig: { 
-              thinkingLevel: ThinkingLevel.LOW 
-            },
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
@@ -399,9 +389,7 @@ export class GeminiService implements TranslationService {
         
         if ((isQuotaError || isUnavailableError) && retryCount < MAX_RETRIES) {
           retryCount++;
-          const baseDelay = isQuotaError ? 10000 : 2000;
-          const delay = Math.pow(2, retryCount - 1) * baseDelay + Math.random() * 2000;
-          
+          const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
           const errorType = isQuotaError ? "Quota exceeded" : "Model unavailable (503)";
           console.warn(`${errorType} for lookup. Retrying in ${Math.round(delay)}ms... (Attempt ${retryCount}/${MAX_RETRIES})`);
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -409,8 +397,10 @@ export class GeminiService implements TranslationService {
         }
 
         if (isQuotaError) {
-          throw new Error(`Hệ thống đang tạm thời hết hạn mức (Quota exceeded). 
-            Vui lòng đợi khoảng 1 phút để hệ thống tự động khôi phục hoặc nâng cấp API Key trong phần Cài đặt.`);
+          throw new Error(`Bạn đã hết hạn mức sử dụng API (Quota exceeded). 
+            Nếu bạn dùng gói miễn phí, giới hạn là 15 yêu cầu/phút. 
+            Lỗi chi tiết: ${error.message || "Resource exhausted"}.
+            Vui lòng đợi 1 phút hoặc kiểm tra lại API Key trong phần Cài đặt.`);
         }
         if (isUnavailableError) {
           throw new Error("Hệ thống đang quá tải do nhu cầu sử dụng cao. Vui lòng thử lại sau giây lát.");
