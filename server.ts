@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
 import fs from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,12 +30,14 @@ if (admin.apps.length === 0) {
 
 // Initialize Firestore with named database support
 let firestore: admin.firestore.Firestore;
+const app = admin.apps[0];
+
 if (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)') {
-  // For named databases in Admin SDK v11+, use admin.firestore(databaseId)
-  firestore = admin.firestore(firebaseConfig.firestoreDatabaseId);
+  // Use the modular getFirestore which supports named databases directly
+  firestore = getFirestore(app, firebaseConfig.firestoreDatabaseId) as any;
   console.log("Firestore initialized with named database:", firebaseConfig.firestoreDatabaseId);
 } else {
-  firestore = admin.firestore();
+  firestore = getFirestore(app) as any;
 }
 
 const auth = admin.auth();
