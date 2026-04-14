@@ -150,6 +150,9 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0,
+            thinkingConfig: { 
+              thinkingLevel: ThinkingLevel.LOW 
+            },
           }
         });
 
@@ -271,6 +274,9 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0,
+            thinkingConfig: { 
+              thinkingLevel: ThinkingLevel.LOW 
+            },
           }
         });
 
@@ -350,6 +356,9 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0,
+            thinkingConfig: { 
+              thinkingLevel: ThinkingLevel.LOW 
+            },
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,

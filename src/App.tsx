@@ -1865,7 +1865,7 @@ export default function App() {
     currentKeyRef.current = key;
 
     if (selectedEngine === 'gemini-flash') {
-      translationService.current = new GeminiService(key, "gemini-3.1-flash-lite-preview");
+      translationService.current = new GeminiService(key, "gemini-3-flash-preview");
     } else if (selectedEngine === 'gemini-pro') {
       translationService.current = new GeminiService(key, "gemini-3.1-pro-preview");
     } else if (selectedEngine === 'medical-specialized') {
