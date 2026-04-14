@@ -12,7 +12,6 @@ import { MedicalDictionary } from './components/MedicalDictionary';
 import { Logo, LogoWithText } from './components/Logo';
 
 import { FileExplorer, FileData } from './components/FileExplorer';
-import { AdminDashboard } from './components/AdminDashboard';
 import { UploadStatus, UploadTask } from './components/UploadStatus';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js`;
@@ -511,6 +510,13 @@ export default function App() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [isFetchingUsers, setIsFetchingUsers] = useState(false);
+  const [adminNewUserEmail, setAdminNewUserEmail] = useState('');
+  const [adminNewUserPassword, setAdminNewUserPassword] = useState('');
+  const [adminNewUserDisplayName, setAdminNewUserDisplayName] = useState('');
+  const [adminNewUserRole, setAdminNewUserRole] = useState<'user' | 'admin'>('user');
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [newPasswordValue, setNewPasswordValue] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -545,7 +551,7 @@ export default function App() {
     try {
       // 1. Check System/Environment Key
       const envKey = engineKeys[selectedEngine];
-      const testService = new GeminiService(envKey, "gemini-1.5-flash");
+      const testService = new GeminiService(envKey, "gemini-3.1-flash-lite-preview");
       const envResults = await testService.checkAvailableKeys();
       
       // 2. Check ALL Vault Keys in parallel for better performance
@@ -558,7 +564,7 @@ export default function App() {
         
         // Run checks in parallel
         const checkPromises = vaultKeysToCheck.map(async (vKey) => {
-          const vService = new GeminiService(vKey.value, "gemini-1.5-flash");
+          const vService = new GeminiService(vKey.value, "gemini-3.1-flash-lite-preview");
           const vRes = await vService.checkAvailableKeys();
           const isActive = vRes.manualKey;
           
@@ -720,18 +726,9 @@ export default function App() {
 
     try {
       if (authMode === 'register') {
-        const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
-        if (authDisplayName) {
-          await updateProfile(userCredential.user, { displayName: authDisplayName });
-        }
-        // Create user document in Firestore
-        await setDoc(doc(db, 'users', userCredential.user.uid), {
-          uid: userCredential.user.uid,
-          email: authEmail,
-          displayName: authDisplayName || authEmail.split('@')[0],
-          role: 'user',
-          createdAt: serverTimestamp()
-        });
+        setAuthError("Đăng ký đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên.");
+        setIsLoggingIn(false);
+        return;
       } else {
         await signInWithEmailAndPassword(auth, authEmail, authPassword);
       }
@@ -789,6 +786,101 @@ export default function App() {
       if (selectedKeyId === keyId) setSelectedKeyId(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  };
+
+  const fetchAllUsers = async () => {
+    if (userRole !== 'admin' || !user) return;
+    setIsFetchingUsers(true);
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("Non-JSON response from server:", text.substring(0, 100));
+        throw new Error("Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại sau.");
+      }
+      
+      const data = await response.json();
+      if (data.users) setAllUsers(data.users);
+    } catch (e) {
+      console.error("Failed to fetch users:", e);
+    } finally {
+      setIsFetchingUsers(false);
+    }
+  };
+
+  const createNewUser = async (userData: any) => {
+    if (userRole !== 'admin' || !user) {
+      throw new Error("Bạn không có quyền thực hiện hành động này");
+    }
+    
+    // Basic validation
+    if (!userData.email || !userData.email.includes('@')) {
+      throw new Error("Email không hợp lệ");
+    }
+    if (!userData.password || userData.password.length < 6) {
+      throw new Error("Mật khẩu phải có ít nhất 6 ký tự");
+    }
+
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/create-user', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(userData)
+      });
+      
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("Non-JSON response from server during user creation:", text.substring(0, 100));
+        throw new Error("Máy chủ trả về dữ liệu không hợp lệ khi tạo người dùng.");
+      }
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        await fetchAllUsers();
+        return true;
+      } else {
+        const errorMsg = data.error || data.message || "Không thể tạo người dùng";
+        throw new Error(errorMsg);
+      }
+    } catch (e: any) {
+      console.error("Create user failed:", e);
+      throw e;
+    }
+  };
+
+  const resetUserPassword = async (uid: string, newPassword: string) => {
+    if (userRole !== 'admin' || !user) return;
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ uid, newPassword })
+      });
+      const data = await response.json();
+      if (data.success) {
+        return true;
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (e: any) {
+      console.error("Reset password failed:", e);
+      throw e;
     }
   };
 
@@ -1773,9 +1865,9 @@ export default function App() {
     currentKeyRef.current = key;
 
     if (selectedEngine === 'gemini-flash') {
-      translationService.current = new GeminiService(key, "gemini-1.5-flash");
+      translationService.current = new GeminiService(key, "gemini-3.1-flash-lite-preview");
     } else if (selectedEngine === 'gemini-pro') {
-      translationService.current = new GeminiService(key, "gemini-1.5-pro");
+      translationService.current = new GeminiService(key, "gemini-3.1-pro-preview");
     } else if (selectedEngine === 'medical-specialized') {
       translationService.current = new MedicalApiService(key);
     }
@@ -3455,6 +3547,7 @@ export default function App() {
                           onClick={() => {
                             setShowSettings(false);
                             setShowAdminPanel(true);
+                            fetchAllUsers();
                           }}
                           className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg text-[10px] font-bold hover:bg-amber-200 transition-all"
                         >
@@ -3564,7 +3657,7 @@ export default function App() {
                           return;
                         }
                         setTestStatus({ type: 'loading', message: "Đang kiểm tra..." });
-                        const testService = new GeminiService(tempKeys['gemini-flash'], "gemini-1.5-flash");
+                        const testService = new GeminiService(tempKeys['gemini-flash'], "gemini-3-flash-preview");
                         try {
                           await testService.lookupMedicalTerm("test");
                           setTestStatus({ type: 'success', message: "Kết nối thành công! API Key hoạt động tốt." });
@@ -3919,11 +4012,234 @@ export default function App() {
       </AnimatePresence>
 
       {/* Admin Panel Modal */}
-      <AdminDashboard 
-        isOpen={showAdminPanel} 
-        onClose={() => setShowAdminPanel(false)} 
-        userRole={userRole || 'user'} 
-      />
+      <AnimatePresence>
+        {showAdminPanel && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowAdminPanel(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
+                <div className="flex items-center gap-3">
+                  <div className="bg-amber-100 p-2 rounded-xl">
+                    <ShieldCheck className="text-amber-600 w-5 h-5" />
+                  </div>
+                  <h3 className="text-xl font-display font-bold text-slate-800">Quản trị hệ thống</h3>
+                </div>
+                <button 
+                  onClick={() => setShowAdminPanel(false)}
+                  className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-8 no-scrollbar">
+                {/* Create User Section */}
+                <section>
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-1.5 h-4 bg-indigo-500 rounded-full" />
+                    <h4 className="text-sm font-bold text-slate-800">Thêm người dùng mới</h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Tên hiển thị</label>
+                      <input 
+                        type="text"
+                        placeholder="VD: Nguyễn Văn A"
+                        value={adminNewUserDisplayName}
+                        onChange={(e) => setAdminNewUserDisplayName(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Email</label>
+                      <input 
+                        type="email"
+                        placeholder="email@example.com"
+                        value={adminNewUserEmail}
+                        onChange={(e) => setAdminNewUserEmail(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Mật khẩu</label>
+                      <input 
+                        type="password"
+                        placeholder="••••••••"
+                        value={adminNewUserPassword}
+                        onChange={(e) => setAdminNewUserPassword(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Vai trò</label>
+                      <select 
+                        value={adminNewUserRole}
+                        onChange={(e) => setAdminNewUserRole(e.target.value as 'user' | 'admin')}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer"
+                      >
+                        <option value="user">Người dùng</option>
+                        <option value="admin">Quản trị viên</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <button 
+                        onClick={async () => {
+                          if (!adminNewUserEmail || !adminNewUserPassword) {
+                            alert("Vui lòng nhập email và mật khẩu");
+                            return;
+                          }
+                          setIsCreatingUser(true);
+                          try {
+                            await createNewUser({
+                              email: adminNewUserEmail,
+                              password: adminNewUserPassword,
+                              displayName: adminNewUserDisplayName,
+                              role: adminNewUserRole
+                            });
+                            alert("Đã thêm người dùng thành công");
+                            setAdminNewUserEmail('');
+                            setAdminNewUserPassword('');
+                            setAdminNewUserDisplayName('');
+                          } catch (e: any) {
+                            alert(e.message);
+                          } finally {
+                            setIsCreatingUser(false);
+                          }
+                        }}
+                        disabled={isCreatingUser}
+                        className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-indigo-200"
+                      >
+                        {isCreatingUser ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+                        Thêm ngay
+                      </button>
+                    </div>
+                  </div>
+                </section>
+
+                {/* User List Section */}
+                <section>
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Users className="w-3.5 h-3.5" />
+                      Danh sách người dùng ({allUsers.length})
+                    </h4>
+                    <button 
+                      onClick={fetchAllUsers}
+                      className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors"
+                      title="Làm mới"
+                    >
+                      <RefreshCcw className={cn("w-3.5 h-3.5", isFetchingUsers && "animate-spin")} />
+                    </button>
+                  </div>
+
+                  <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50/50 text-slate-400 font-bold uppercase tracking-widest border-b border-slate-100">
+                          <tr>
+                            <th className="px-6 py-4">Thông tin người dùng</th>
+                            <th className="px-6 py-4">Vai trò</th>
+                            <th className="px-6 py-4">Ngày tham gia</th>
+                            <th className="px-6 py-4 text-right">Hành động</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {allUsers.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-6 py-12 text-center text-slate-400 italic">
+                                Chưa có dữ liệu người dùng
+                              </td>
+                            </tr>
+                          ) : (
+                            allUsers.map((u) => (
+                              <tr key={u.uid} className="hover:bg-slate-50/30 transition-colors group">
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl flex items-center justify-center text-xs font-black text-slate-500 shadow-inner">
+                                      {u.displayName ? u.displayName.charAt(0).toUpperCase() : u.email.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div>
+                                      <p className="font-bold text-slate-800 text-sm">{u.displayName || 'Chưa đặt tên'}</p>
+                                      <p className="text-[10px] text-slate-400 font-medium">{u.email}</p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className={cn(
+                                    "px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider shadow-sm",
+                                    u.role === 'admin' 
+                                      ? "bg-amber-50 text-amber-600 border border-amber-100" 
+                                      : "bg-indigo-50 text-indigo-600 border border-indigo-100"
+                                  )}>
+                                    {u.role === 'admin' ? 'Quản trị viên' : 'Thành viên'}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex flex-col">
+                                    <span className="text-slate-600 font-medium">
+                                      {u.createdAt ? (typeof u.createdAt === 'string' ? new Date(u.createdAt).toLocaleDateString('vi-VN') : (u.createdAt._seconds ? new Date(u.createdAt._seconds * 1000).toLocaleDateString('vi-VN') : 'N/A')) : 'N/A'}
+                                    </span>
+                                    <span className="text-[9px] text-slate-300">
+                                      {u.uid.substring(0, 8)}...
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button 
+                                      onClick={async () => {
+                                        const newPass = prompt(`Nhập mật khẩu mới cho ${u.email}:`);
+                                        if (newPass && newPass.length >= 6) {
+                                          try {
+                                            await resetUserPassword(u.uid, newPass);
+                                            alert("Đã đổi mật khẩu thành công");
+                                          } catch (e: any) {
+                                            alert(e.message);
+                                          }
+                                        } else if (newPass) {
+                                          alert("Mật khẩu phải từ 6 ký tự");
+                                        }
+                                      }}
+                                      className="p-2 hover:bg-amber-50 text-amber-600 rounded-lg transition-colors"
+                                      title="Đổi mật khẩu"
+                                    >
+                                      <KeyRound className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end">
+                <button 
+                  onClick={() => setShowAdminPanel(false)}
+                  className="px-6 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all"
+                >
+                  Đóng
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Footer Info */}
       {!pdfDoc && (
