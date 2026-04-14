@@ -94,7 +94,7 @@ service cloud.firestore {
     function isValidTranslation(data) {
       return hasOnlyAllowedFields(['content', 'status', 'updatedAt']) &&
              data.content is string && data.content.size() < 100000 && // Limit size to 100KB per page
-             data.status in ['success', 'error'] &&
+             data.status in ['success', 'error', 'loading'] &&
              (data.updatedAt == null || data.updatedAt is timestamp);
     }
 

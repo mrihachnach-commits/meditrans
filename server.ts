@@ -20,6 +20,7 @@ const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
 
 // Set environment variables for firebase-admin
 process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
+process.env.FIREBASE_CONFIG = JSON.stringify(firebaseConfig);
 
 // Initialize Firebase Admin
 if (admin.apps.length === 0) {
@@ -139,18 +140,22 @@ async function startServer() {
         }
       }
 
+      // Hardcoded admin check as fallback (same as firestore.rules)
+      const isPrimaryAdmin = decodedToken.email === "mrihachnach@gmail.com" || 
+                             decodedToken.email === "admin@gmail.com";
+
       let userData: any = null;
       try {
         const userDoc = await firestore.collection("users").doc(decodedToken.uid).get();
         userData = userDoc.data();
       } catch (dbError: any) {
         console.error("Firestore fetch failed in admin check:", dbError.message);
-        // If DB fails, we rely solely on the hardcoded email check below
+        // If DB fails, we rely on the hardcoded email check
+        if (isPrimaryAdmin) {
+          console.log("Allowing access for primary admin despite Firestore error");
+          userData = { role: "admin" };
+        }
       }
-      
-      // Hardcoded admin check as fallback (same as firestore.rules)
-      const isPrimaryAdmin = decodedToken.email === "mrihachnach@gmail.com" || 
-                             decodedToken.email === "admin@gmail.com";
       
       const isAdmin = userData?.role === "admin" || isPrimaryAdmin;
 
@@ -196,9 +201,11 @@ async function startServer() {
           // If Identity Toolkit API is disabled, this might fail
           console.error("[Admin] Auth creation failed:", e.message);
           if (e.message.includes("Identity Toolkit API")) {
+            const enablementLink = `https://console.developers.google.com/apis/api/identitytoolkit.googleapis.com/overview?project=${firebaseConfig.projectId}`;
             return res.status(500).json({ 
-              error: "Lỗi hệ thống: Identity Toolkit API chưa được kích hoạt. Vui lòng liên hệ kỹ thuật.",
-              details: e.message
+              error: "Lỗi hệ thống: Identity Toolkit API chưa được kích hoạt.",
+              details: e.message,
+              actionRequired: "Vui lòng kích hoạt Identity Toolkit API tại: " + enablementLink
             });
           }
           throw e;
@@ -245,6 +252,36 @@ async function startServer() {
       });
       res.json({ success: true });
     } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Admin: Delete User
+  app.post("/api/admin/delete-user", checkAdmin, async (req, res) => {
+    const { uid } = req.body;
+    try {
+      // 1. Delete from Auth
+      await auth.deleteUser(uid);
+      // 2. Delete from Firestore
+      await firestore.collection("users").doc(uid).delete();
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[Admin] Error deleting user:", error);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Admin: Update User Role
+  app.post("/api/admin/update-user-role", checkAdmin, async (req, res) => {
+    const { uid, role } = req.body;
+    try {
+      await firestore.collection("users").doc(uid).update({
+        role,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[Admin] Error updating user role:", error);
       res.status(400).json({ error: error.message });
     }
   });
@@ -301,10 +338,12 @@ async function startServer() {
         }
       }
 
-      if (error.message.includes("PERMISSION_DENIED")) {
+      if (error.message.includes("PERMISSION_DENIED") || error.message.includes("Identity Toolkit API")) {
+        const enablementLink = `https://console.developers.google.com/apis/api/identitytoolkit.googleapis.com/overview?project=${firebaseConfig.projectId}`;
         return res.status(403).json({ 
-          error: "Không có quyền truy cập cơ sở dữ liệu. Vui lòng kiểm tra cấu hình Firebase.",
-          details: error.message 
+          error: "Không có quyền truy cập cơ sở dữ liệu hoặc Identity Toolkit API chưa được kích hoạt.",
+          details: error.message,
+          actionRequired: "Vui lòng kích hoạt Identity Toolkit API tại: " + enablementLink
         });
       }
       
