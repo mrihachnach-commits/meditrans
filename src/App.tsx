@@ -1781,8 +1781,8 @@ export default function App() {
 
   useEffect(() => {
     if (pdfDoc && autoTranslate && translations[currentPage]?.status === 'success' && !isTranslating) {
-      // Look ahead up to 2 pages to maintain a buffer
-      const pagesToBuffer = [currentPage + 1, currentPage + 2];
+      // Look ahead only 1 page to reduce quota pressure on free tier
+      const pagesToBuffer = [currentPage + 1];
       const controllers: AbortController[] = [];
       
       for (const pageNum of pagesToBuffer) {
@@ -1791,11 +1791,12 @@ export default function App() {
           controllers.push(controller);
           preTranslateControllersRef.current.set(pageNum, controller);
           
+          // Increase delay to 2 seconds to avoid hitting 15 RPM limit (1 req every 4s is safer)
           const timer = setTimeout(() => {
             preTranslatePage(pageNum, controller.signal).finally(() => {
               preTranslateControllersRef.current.delete(pageNum);
             });
-          }, 500);
+          }, 2000);
           
           // Note: we don't return here, we want to start all timers
         }
@@ -1917,10 +1918,13 @@ export default function App() {
 
   useEffect(() => {
     if (pdfDoc && autoTranslate && !isRendering && !isTranslating && !translations[currentPage]) {
-      // Instant startup without delay
-      if (!isRenderingRef.current && !isTranslatingRef.current && !translationsRef.current[currentPage]) {
-        translateCurrentPage(currentPage);
-      }
+      // Add a small debounce to prevent rapid-fire requests if user scrolls quickly
+      const timer = setTimeout(() => {
+        if (currentPageRef.current === currentPage && !isRenderingRef.current && !isTranslatingRef.current && !translationsRef.current[currentPage]) {
+          translateCurrentPage(currentPage);
+        }
+      }, 800); // 800ms debounce
+      return () => clearTimeout(timer);
     }
   }, [currentPage, pdfDoc, autoTranslate, isRendering, isTranslating, translations, translateCurrentPage]);
 
