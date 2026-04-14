@@ -201,6 +201,7 @@ interface TranslationState {
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
+  const [currentFileName, setCurrentFileName] = useState<string>('');
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -295,6 +296,12 @@ export default function App() {
     setPdfError(null);
     setShowExplorer(false);
     setIsLocalOnly(true);
+    setCurrentFileName(localFile.name);
+    
+    // On mobile, switch to split view automatically when opening a file
+    if (window.innerWidth < 768) {
+      setMobileViewMode('split');
+    }
     
     // Generate a temporary docId for local file
     const docId = `local_${localFile.name.replace(/[^a-zA-Z0-9]/g, '_')}_${localFile.size}`;
@@ -1023,6 +1030,7 @@ export default function App() {
     preTranslateControllersRef.current.clear();
     
     setFile(null);
+    setCurrentFileName('');
     setFileUrl(null);
     setFileId(null);
     setPdfDoc(null);
@@ -1057,8 +1065,14 @@ export default function App() {
     setIsPdfLoading(true);
     setPdfError(null);
     setFileId(fileData.id);
+    setCurrentFileName(fileData.name);
     setShowExplorer(false);
     setIsLocalOnly(false);
+
+    // On mobile, switch to split view automatically when opening a file
+    if (window.innerWidth < 768) {
+      setMobileViewMode('split');
+    }
 
     // Increment fileId to invalidate all pending translations for the previous file
     fileIdRef.current += 1;
@@ -1130,6 +1144,12 @@ export default function App() {
       // Generate a document ID based on filename and size
       const docId = `${selectedFile.name.replace(/[^a-zA-Z0-9]/g, '_')}_${selectedFile.size}`;
       setFileId(docId);
+      setCurrentFileName(selectedFile.name);
+
+      // On mobile, switch to split view automatically when opening a file
+      if (window.innerWidth < 768) {
+        setMobileViewMode('split');
+      }
 
       // Small delay to allow UI to update and browser to settle after file picker
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -1380,10 +1400,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (file && isAutoFit) {
+    if (pdfDoc && isAutoFit) {
       fitToWidth();
     }
-  }, [mobileViewMode, file, isAutoFit]);
+  }, [mobileViewMode, pdfDoc, isAutoFit]);
 
   const fitToWidthAction = () => {
     setIsAutoFit(true);
@@ -2317,7 +2337,7 @@ export default function App() {
     <ErrorBoundary>
       <div className={cn(
         "h-screen flex flex-col bg-slate-50 overflow-hidden", 
-        (isFullScreen || (file && window.innerWidth < 768)) && "fixed inset-0 z-50"
+        (isFullScreen || (pdfDoc && window.innerWidth < 768)) && "fixed inset-0 z-50"
       )}>
       {/* Key Check Notification */}
       <AnimatePresence>
@@ -2389,7 +2409,7 @@ export default function App() {
         )}
       </AnimatePresence>
       {/* Header */}
-      {(!isFullScreen && !(file && window.innerWidth < 768)) && (
+      {(!isFullScreen && !(pdfDoc && window.innerWidth < 768)) && (
         <header className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4 shrink-0 shadow-sm z-30">
           {file || pdfDoc ? (
             <button 
@@ -2409,16 +2429,16 @@ export default function App() {
           <LogoWithText />
 
         <div className="flex items-center gap-2">
-          {file && (
+          {pdfDoc && (
             <div className="hidden md:flex items-center bg-slate-50 rounded-full px-3 py-1 gap-2 border border-slate-100 max-w-[300px]">
               <FileText className="w-3.5 h-3.5 text-slate-400" />
-              <span className="text-xs font-medium text-slate-600 truncate">{file.name}</span>
+              <span className="text-xs font-medium text-slate-600 truncate">{currentFileName}</span>
             </div>
           )}
           
           <div className="h-6 w-px bg-slate-200 mx-1 hidden md:block" />
           
-          {file && (
+          {pdfDoc && (
             <button 
               onClick={clearFile}
               className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-rose-50 text-rose-500 hover:text-rose-600 rounded-full transition-all text-[10px] font-bold uppercase tracking-wider"
@@ -3080,7 +3100,7 @@ export default function App() {
       </main>
 
       {/* Tablet Navigation Buttons */}
-      {file && !showSettings && !showAuthModal && (
+      {pdfDoc && !showSettings && !showAuthModal && (
         <div className="fixed bottom-6 md:bottom-8 left-0 right-0 pointer-events-none z-40 hidden md:flex justify-between px-4 md:px-12">
           <button 
             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -3275,7 +3295,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Mobile View Toggle & Navigation Floating Bar */}
-      {file && (
+      {pdfDoc && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] md:hidden flex flex-col items-center gap-3 w-[95%] max-w-[420px]">
           {/* Main Action Bar */}
           <div className="w-full flex items-center bg-white/95 backdrop-blur-xl rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-slate-200 p-1 gap-0.5 ring-1 ring-slate-900/5 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -4222,7 +4242,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Footer Info */}
-      {!file && (
+      {!pdfDoc && (
         <footer className="h-12 border-t border-slate-200 bg-white flex items-center justify-center px-6 shrink-0">
           <p className="text-[10px] text-slate-400 font-medium uppercase tracking-[0.2em]">
             Copyright © Dr. Hoang Hiep • Medical Grade Translation
