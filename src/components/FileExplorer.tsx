@@ -78,6 +78,8 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect, onUplo
   const [showMoveModal, setShowMoveModal] = useState<{id: string, type: 'file' | 'folder'} | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const [openingFileId, setOpeningFileId] = useState<string | null>(null);
+
   const user = auth.currentUser;
 
   useEffect(() => {
@@ -109,6 +111,11 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect, onUplo
       unsubscribeFiles();
     };
   }, [user, currentFolderId]);
+
+  // Reset opening state if folders change (e.g. navigation)
+  useEffect(() => {
+    setOpeningFileId(null);
+  }, [currentFolderId]);
 
   const handleCreateFolder = async () => {
     if (!user || !newFolderName.trim()) return;
@@ -337,14 +344,31 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onFileSelect, onUplo
                 key={file.id}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="group relative bg-white border border-slate-100 rounded-2xl p-4 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-50 transition-all cursor-pointer"
-                onClick={() => onFileSelect(file)}
+                className={cn(
+                  "group relative bg-white border border-slate-100 rounded-2xl p-4 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-50 transition-all cursor-pointer",
+                  openingFileId === file.id && "border-indigo-500 shadow-indigo-50 bg-indigo-50/30"
+                )}
+                onClick={() => {
+                  if (openingFileId) return;
+                  setOpeningFileId(file.id);
+                  onFileSelect(file);
+                }}
               >
                 <div className="flex flex-col items-center gap-3">
-                  <div className="bg-indigo-50 p-3 rounded-xl group-hover:bg-indigo-100 transition-colors">
-                    <FileText className="text-indigo-600 w-8 h-8" />
+                  <div className={cn(
+                    "p-3 rounded-xl transition-colors",
+                    openingFileId === file.id ? "bg-indigo-600" : "bg-indigo-50 group-hover:bg-indigo-100"
+                  )}>
+                    {openingFileId === file.id ? (
+                      <Loader2 className="w-8 h-8 animate-spin text-white" />
+                    ) : (
+                      <FileText className="text-indigo-600 w-8 h-8" />
+                    )}
                   </div>
-                  <span className="text-xs font-bold text-slate-700 text-center truncate w-full">
+                  <span className={cn(
+                    "text-xs font-bold text-center truncate w-full",
+                    openingFileId === file.id ? "text-indigo-700" : "text-slate-700"
+                  )}>
                     {file.name}
                   </span>
                   <span className="text-[10px] text-slate-400 font-medium">

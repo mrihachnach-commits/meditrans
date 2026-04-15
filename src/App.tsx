@@ -2536,7 +2536,7 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 flex overflow-hidden relative bg-slate-50">
         <UploadStatus tasks={uploadTasks} onDismiss={dismissUploadTask} />
-        {!pdfDoc ? (
+        {showExplorer ? (
           <div className="flex-1 p-4 sm:p-8 overflow-hidden">
             <FileExplorer 
               onFileSelect={handleFileSelectFromExplorer} 
@@ -2747,38 +2747,51 @@ export default function App() {
                 onTouchStart={handleTouchStart}
               >
                 <div className="inline-block min-w-full text-center align-top">
-                  <div className={cn(
-                    "inline-block text-left relative shadow-2xl bg-white overflow-hidden shrink-0 transition-all duration-300",
-                    isFullScreen ? "my-0 rounded-none border-none" : "my-8 rounded-lg border border-slate-200"
-                  )}>
-                    {(isPdfLoading || isRendering) && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-slate-200/30 z-20">
-                        <div className="flex flex-col items-center gap-2">
-                          <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
-                        </div>
+                  {!pdfDoc && isPdfLoading ? (
+                    <div className="flex flex-col items-center justify-center py-20 gap-4">
+                      <div className="relative">
+                        <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+                        <FileText className="absolute inset-0 m-auto w-6 h-6 text-indigo-600" />
                       </div>
-                    )}
-                    {pdfError && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20 p-4 text-center">
-                        <div className="max-w-xs">
-                          <AlertCircle className="w-10 h-10 text-rose-500 mx-auto mb-2" />
-                          <p className="text-sm font-bold text-slate-800">{pdfError}</p>
-                        </div>
+                      <div className="text-center">
+                        <p className="text-sm font-bold text-slate-700">Đang tải tài liệu...</p>
+                        <p className="text-xs text-slate-400">Vui lòng đợi trong giây lát</p>
                       </div>
-                    )}
-                    <canvas 
-                      ref={canvasRef} 
-                      className={cn(
-                        "transition-opacity duration-200 relative z-0 block", 
-                        (isPdfLoading || isRendering) ? "opacity-50" : "opacity-100"
-                      )} 
-                    />
-                    <div 
-                      ref={textLayerRef}
-                      className="absolute inset-0 textLayer pointer-events-auto z-10"
-                      onMouseUp={handleMouseUp}
-                    />
-                  </div>
+                    </div>
+                  ) : (
+                    <div className={cn(
+                      "inline-block text-left relative shadow-2xl bg-white overflow-hidden shrink-0 transition-all duration-300",
+                      isFullScreen ? "my-0 rounded-none border-none" : "my-8 rounded-lg border border-slate-200"
+                    )}>
+                      {(isPdfLoading || isRendering) && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-slate-200/30 z-20">
+                          <div className="flex flex-col items-center gap-2">
+                            <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
+                          </div>
+                        </div>
+                      )}
+                      {pdfError && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20 p-4 text-center">
+                          <div className="max-w-xs">
+                            <AlertCircle className="w-10 h-10 text-rose-500 mx-auto mb-2" />
+                            <p className="text-sm font-bold text-slate-800">{pdfError}</p>
+                          </div>
+                        </div>
+                      )}
+                      <canvas 
+                        ref={canvasRef} 
+                        className={cn(
+                          "transition-opacity duration-200 relative z-0 block", 
+                          (isPdfLoading || isRendering) ? "opacity-50" : "opacity-100"
+                        )} 
+                      />
+                      <div 
+                        ref={textLayerRef}
+                        className="absolute inset-0 textLayer pointer-events-auto z-10"
+                        onMouseUp={handleMouseUp}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
