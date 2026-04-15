@@ -1867,7 +1867,7 @@ export default function App() {
     if (selectedEngine === 'gemini-flash') {
       translationService.current = new GeminiService(key, "gemini-3.1-flash-lite-preview");
     } else if (selectedEngine === 'gemini-pro') {
-      translationService.current = new GeminiService(key, "gemini-3.1-pro-preview");
+      translationService.current = new GeminiService(key, "gemini-3-flash-preview");
     } else if (selectedEngine === 'medical-specialized') {
       translationService.current = new MedicalApiService(key);
     }
@@ -3657,7 +3657,7 @@ export default function App() {
                           return;
                         }
                         setTestStatus({ type: 'loading', message: "Đang kiểm tra..." });
-                        const testService = new GeminiService(tempKeys['gemini-flash'], "gemini-3-flash-preview");
+                        const testService = new GeminiService(tempKeys['gemini-flash'], "gemini-3.1-flash-lite-preview");
                         try {
                           await testService.lookupMedicalTerm("test");
                           setTestStatus({ type: 'success', message: "Kết nối thành công! API Key hoạt động tốt." });

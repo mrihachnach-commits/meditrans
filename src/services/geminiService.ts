@@ -7,7 +7,7 @@ export class GeminiService implements TranslationService {
   private aiInstance: any = null;
   private lastKey: string | null = null;
 
-  constructor(apiKey?: string, modelName: string = "gemini-3-flash-preview") {
+  constructor(apiKey?: string, modelName: string = "gemini-3.1-flash-lite-preview") {
     this.modelName = modelName;
     this.apiKey = apiKey;
     console.log(`[MediTrans] GeminiService initialized with model ${modelName}`);
@@ -61,7 +61,7 @@ export class GeminiService implements TranslationService {
         const ai = new GoogleGenAI({ apiKey: envKey });
         // Simple validation call
         await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: "gemini-3.1-flash-lite-preview",
           contents: "hi"
         });
         results.envKey = true;
@@ -74,7 +74,7 @@ export class GeminiService implements TranslationService {
       try {
         const ai = new GoogleGenAI({ apiKey: manualKey });
         await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: "gemini-3.1-flash-lite-preview",
           contents: "hi"
         });
         results.manualKey = true;
@@ -150,6 +150,9 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0,
+            thinkingConfig: {
+              thinkingLevel: ThinkingLevel.MINIMAL
+            }
           }
         });
 
@@ -271,6 +274,9 @@ export class GeminiService implements TranslationService {
           config: {
             systemInstruction: systemInstruction,
             temperature: 0,
+            thinkingConfig: {
+              thinkingLevel: ThinkingLevel.MINIMAL
+            }
           }
         });
 
@@ -351,6 +357,9 @@ export class GeminiService implements TranslationService {
             systemInstruction: systemInstruction,
             temperature: 0,
             responseMimeType: "application/json",
+            thinkingConfig: {
+              thinkingLevel: ThinkingLevel.MINIMAL
+            },
             responseSchema: {
               type: Type.OBJECT,
               properties: {
