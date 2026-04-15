@@ -1352,7 +1352,7 @@ export default function App() {
             textLayerDiv.style.setProperty('--scale-factor', textViewport.scale.toString());
             
             await (pdfjs as any).renderTextLayer({
-              textContent: textContent,
+              textContentSource: textContent,
               container: textLayerDiv,
               viewport: textViewport,
               textDivs: []
