@@ -1299,7 +1299,7 @@ export default function App() {
 
         // Instant Capture for Translation - Prepare image buffer immediately after render
         if (requestId === renderRequestIdRef.current) {
-          const MAX_DIMENSION = 1536;
+          const MAX_DIMENSION = 1024;
           let captureCanvas = canvas;
           
           if (canvas.width > MAX_DIMENSION || canvas.height > MAX_DIMENSION) {
@@ -1314,7 +1314,7 @@ export default function App() {
             }
           }
           
-          const buffer = captureCanvas.toDataURL('image/jpeg', 0.85);
+          const buffer = captureCanvas.toDataURL('image/jpeg', 0.65);
           
           // Safety check: data:, or very short string means capture failed
           if (buffer.length > 1000) {
@@ -1439,10 +1439,20 @@ export default function App() {
     
     if (!canvasRef.current || !translationService.current) return;
 
+    // Avoid double translation for the same page unless forced
+    const currentStatus = translationsRef.current[targetPage]?.status;
+    if (!force && (translatingPagesRef.current.has(targetPage) || (currentStatus === 'loading' || currentStatus === 'success'))) {
+      return;
+    }
+
+    // Mark as translating IMMEDIATELY to prevent race conditions
+    translatingPagesRef.current.add(targetPage);
+
     // Safety check: translateCurrentPage uses the global canvasRef, 
     // so it MUST only be used for the currently visible page.
     if (targetPage !== currentPage) {
       console.log(`[MediTrans] Hủy dịch trang ${targetPage} vì không còn là trang hiện tại.`);
+      translatingPagesRef.current.delete(targetPage);
       return;
     }
 
@@ -1453,11 +1463,9 @@ export default function App() {
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
 
-    // Avoid double translation for the same page unless forced
-    const currentStatus = translationsRef.current[targetPage]?.status;
-    if (!force && (translatingPagesRef.current.has(targetPage) || (currentStatus === 'loading' || currentStatus === 'success'))) {
-      return;
-    }
+    // Set active translation for smooth streaming without re-rendering the whole list
+    setActiveTranslation({ page: targetPage, content: '', status: 'loading' });
+    setIsTranslating(true);
 
     // If still rendering, we don't want to capture a half-rendered or old page
     if (isRenderingRef.current) {
@@ -1468,7 +1476,7 @@ export default function App() {
         if (currentPageRef.current === targetPage) {
           translateCurrentPage(targetPage, force);
         }
-      }, 50);
+      }, 30);
       return;
     }
     
@@ -1483,14 +1491,13 @@ export default function App() {
             status: 'error' 
           }
         }));
+        // Clear active translation on error
+        setActiveTranslation(null);
+        setIsTranslating(false);
+        translatingPagesRef.current.delete(targetPage);
       }
       return;
     }
-
-    // Set active translation for smooth streaming without re-rendering the whole list
-    setActiveTranslation({ page: targetPage, content: '', status: 'loading' });
-    setIsTranslating(true);
-    translatingPagesRef.current.add(targetPage);
 
     // Auto-switch to split view on mobile when starting translation so they see both
     if (window.innerWidth < 768 && mobileViewMode === 'pdf') {
@@ -1523,7 +1530,7 @@ export default function App() {
           return;
         }
 
-        const MAX_DIMENSION = 1280; 
+        const MAX_DIMENSION = 1024; 
         
         let captureCanvas = originalCanvas;
         
@@ -1542,7 +1549,7 @@ export default function App() {
           }
         }
 
-        imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.75);
+        imageBuffer = captureCanvas.toDataURL('image/jpeg', 0.65);
       }
 
       if (!imageBuffer || imageBuffer.length < 1000) {
@@ -1845,37 +1852,57 @@ export default function App() {
   const currentKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    let key = engineKeys[selectedEngine];
+    const currentEngineType = selectedEngine.startsWith('gemini') ? 'gemini' : selectedEngine;
     
-    // If user is logged in and has a selected key from the vault, use it
+    // Collect all available keys for this engine to support rotation
+    let allKeys: string[] = [];
+    
+    // 1. Primary key (selected from vault or default from engineKeys)
+    let primaryKey = engineKeys[selectedEngine];
     if (user && selectedKeyId) {
       const vaultKey = userKeys.find(k => k.id === selectedKeyId);
-      // Map engine types
-      const currentEngineType = selectedEngine.startsWith('gemini') ? 'gemini' : selectedEngine;
       if (vaultKey && vaultKey.engine === currentEngineType) {
-        key = vaultKey.value;
+        primaryKey = vaultKey.value;
       }
     }
+    if (primaryKey) allKeys.push(primaryKey);
 
-    if (currentEngineRef.current === selectedEngine && currentKeyRef.current === key) {
+    // 2. Other keys from vault for the same engine
+    if (user && userKeys.length > 0) {
+      const otherVaultKeys = userKeys
+        .filter(k => k.engine === currentEngineType && k.id !== selectedKeyId && k.status !== 'error')
+        .map(k => k.value);
+      allKeys = [...allKeys, ...otherVaultKeys];
+    }
+
+    // 3. Default key from engineKeys if not already added
+    const defaultKey = engineKeys[selectedEngine];
+    if (defaultKey && !allKeys.includes(defaultKey)) {
+      allKeys.push(defaultKey);
+    }
+
+    // Deduplicate
+    allKeys = Array.from(new Set(allKeys));
+    const keyString = allKeys.join(',');
+
+    if (currentEngineRef.current === selectedEngine && currentKeyRef.current === keyString) {
       return;
     }
 
     currentEngineRef.current = selectedEngine;
-    currentKeyRef.current = key;
+    currentKeyRef.current = keyString;
 
     if (selectedEngine === 'gemini-flash') {
-      translationService.current = new GeminiService(key, "gemini-3.1-flash-lite-preview");
+      translationService.current = new GeminiService(allKeys, "gemini-flash-latest");
     } else if (selectedEngine === 'gemini-pro') {
-      translationService.current = new GeminiService(key, "gemini-3-flash-preview");
+      translationService.current = new GeminiService(allKeys, "gemini-3-flash-preview");
     } else if (selectedEngine === 'medical-specialized') {
-      translationService.current = new MedicalApiService(key);
+      translationService.current = new MedicalApiService(primaryKey);
     }
 
-    // Log key initialization for debugging (obfuscated)
-    if (key) {
-      const obfuscated = key.length > 8 ? `${key.substring(0, 4)}...${key.substring(key.length - 4)}` : '****';
-      console.log(`[MediTrans AI] Initialized ${selectedEngine} with key: ${obfuscated}`);
+    // Log key initialization for debugging
+    if (allKeys.length > 0) {
+      console.log(`[MediTrans AI] Initialized ${selectedEngine} with ${allKeys.length} keys.`);
     } else {
       console.log(`[MediTrans AI] Initialized ${selectedEngine} with system default key`);
     }
@@ -1916,13 +1943,21 @@ export default function App() {
   }, [pdfDoc, isAutoFit, currentPage]);
 
   useEffect(() => {
-    if (pdfDoc && autoTranslate && !isRendering && !isTranslating && !translations[currentPage]) {
-      // Instant startup without delay
-      if (!isRenderingRef.current && !isTranslatingRef.current && !translationsRef.current[currentPage]) {
+    if (!pdfDoc || !autoTranslate) return;
+
+    // Debounce auto-translation to prevent hammering the API when scrolling fast
+    const timer = setTimeout(() => {
+      const isAlreadyTranslated = !!translationsRef.current[currentPage];
+      const isCurrentlyTranslating = isTranslatingRef.current || translatingPagesRef.current.has(currentPage);
+      
+      if (!isRenderingRef.current && !isCurrentlyTranslating && !isAlreadyTranslated) {
+        console.log(`[MediTrans] Auto-translating page ${currentPage}...`);
         translateCurrentPage(currentPage);
       }
-    }
-  }, [currentPage, pdfDoc, autoTranslate, isRendering, isTranslating, translations, translateCurrentPage]);
+    }, 800); // 800ms debounce
+
+    return () => clearTimeout(timer);
+  }, [currentPage, pdfDoc, autoTranslate, isRendering, isTranslating, translateCurrentPage]);
 
   useEffect(() => {
     if (pdfDoc) {
