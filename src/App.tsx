@@ -55,7 +55,8 @@ import {
   Check,
   Copy,
   Folder,
-  Home
+  Home,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -511,6 +512,8 @@ export default function App() {
   const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [authSyncError, setAuthSyncError] = useState<string | null>(null);
+  const [apiActivationLink, setApiActivationLink] = useState<string | null>(null);
   const [isFetchingUsers, setIsFetchingUsers] = useState(false);
   const [adminNewUserEmail, setAdminNewUserEmail] = useState('');
   const [adminNewUserPassword, setAdminNewUserPassword] = useState('');
@@ -634,7 +637,19 @@ export default function App() {
           const isAdminEmail = currentUser.email === "mrihachnach@gmail.com" || currentUser.email === "admin@gmail.com";
           
           if (!userSnap.exists()) {
-            const initialRole = isAdminEmail ? 'admin' : 'user';
+            // Check for authorization/invitation first
+            let initialRole: 'user' | 'admin' = isAdminEmail ? 'admin' : 'user';
+            
+            try {
+              const authRef = doc(db, 'authorized_emails', currentUser.email || '');
+              const authSnap = await getDoc(authRef);
+              if (authSnap.exists()) {
+                initialRole = authSnap.data().role || initialRole;
+              }
+            } catch (authErr) {
+              console.warn("Failed to check authorized_emails:", authErr);
+            }
+
             try {
               await setDoc(userRef, {
                 uid: currentUser.uid,
@@ -650,8 +665,22 @@ export default function App() {
             setUserRole(initialRole);
           } else {
             const data = userSnap.data();
+            
+            // Check for pending role updates from authorized_emails
+            let currentRole = data?.role || 'user';
+            try {
+              const authRef = doc(db, 'authorized_emails', currentUser.email || '');
+              const authSnap = await getDoc(authRef);
+              if (authSnap.exists() && authSnap.data().role !== currentRole) {
+                currentRole = authSnap.data().role;
+                await updateDoc(userRef, { role: currentRole });
+              }
+            } catch (authErr) {
+              // Ignore errors here
+            }
+
             // If it's an admin email but role is not admin, update it
-            if (isAdminEmail && data?.role !== 'admin') {
+            if (isAdminEmail && currentRole !== 'admin') {
               try {
                 await updateDoc(userRef, { role: 'admin' });
               } catch (updateError) {
@@ -659,7 +688,7 @@ export default function App() {
               }
               setUserRole('admin');
             } else {
-              setUserRole(data?.role || 'user');
+              setUserRole(currentRole);
             }
           }
         } catch (error: any) {
@@ -689,12 +718,10 @@ export default function App() {
   // Perform key check when user logs in and keys are loaded
   useEffect(() => {
     if (user && isAuthReady && !hasDoneInitialCheck) {
-      // If user is logged in, wait for keys to load before checking
-      if (userKeys.length > 0 || !selectedKeyId) {
-        performKeyCheck(true); // Silent check on login
-      }
+      // Automatic key check disabled to save quota as requested by user
+      setHasDoneInitialCheck(true);
     }
-  }, [user, isAuthReady, userKeys, selectedKeyId, hasDoneInitialCheck]);
+  }, [user, isAuthReady, hasDoneInitialCheck]);
 
   useEffect(() => {
     if (user) {
@@ -794,21 +821,40 @@ export default function App() {
     setIsFetchingUsers(true);
     try {
       const token = await user.getIdToken();
-      const response = await fetch('/api/admin/users', {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const response = await fetch('/api/admin/list-users', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       });
       
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        const text = await response.text();
-        console.error("Non-JSON response from server:", text.substring(0, 100));
-        throw new Error("Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại sau.");
-      }
-      
       const data = await response.json();
-      if (data.users) setAllUsers(data.users);
-    } catch (e) {
-      console.error("Failed to fetch users:", e);
+      if (response.ok && data.success) {
+        setAuthSyncError(data.authSyncError || null);
+        setApiActivationLink(data.apiLink || null);
+        // Sort by createdAt (newest first)
+        const sortedUsers = data.users.sort((a: any, b: any) => {
+          const dateA = new Date(a.createdAt?.toDate?.() || a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt?.toDate?.() || b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+        setAllUsers(sortedUsers);
+      } else {
+        throw new Error(data.error || "Không thể lấy danh sách người dùng");
+      }
+    } catch (e: any) {
+      console.error("Failed to fetch users from admin API:", e);
+      
+      // Fallback to just Firestore users if API fails completely
+      try {
+        const querySnapshot = await getDocs(collection(db, 'users'));
+        const users = querySnapshot.docs.map(doc => ({
+          ...doc.data(),
+          uid: doc.id
+        }));
+        setAllUsers(users);
+      } catch (innerError) {
+        console.error("Complete failure to fetch users:", innerError);
+      }
     } finally {
       setIsFetchingUsers(false);
     }
@@ -838,25 +884,45 @@ export default function App() {
         body: JSON.stringify(userData)
       });
       
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        const text = await response.text();
-        console.error("Non-JSON response from server during user creation:", text.substring(0, 100));
-        throw new Error("Máy chủ trả về dữ liệu không hợp lệ khi tạo người dùng.");
-      }
-      
       const data = await response.json();
       
       if (response.ok && data.success) {
         await fetchAllUsers();
         return true;
       } else {
-        const errorMsg = data.error || data.message || "Không thể tạo người dùng";
-        throw new Error(errorMsg);
+        throw new Error(data.error || "Không thể tạo người dùng");
       }
-    } catch (e: any) {
-      console.error("Create user failed:", e);
-      throw e;
+    } catch (error: any) {
+      console.error("Error creating user:", error);
+      throw error;
+    }
+  };
+
+  const deleteUser = async (uid: string, email: string) => {
+    if (userRole !== 'admin' || !user) return;
+    if (!confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn tài khoản ${email}?`)) return;
+
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/delete-user', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ uid, email })
+      });
+      
+      const data = await response.json();
+      if (response.ok && data.success) {
+        await fetchAllUsers();
+        alert("Đã xóa người dùng thành công");
+      } else {
+        throw new Error(data.error || "Không thể xóa người dùng");
+      }
+    } catch (error: any) {
+      console.error("Error deleting user:", error);
+      alert("Lỗi khi xóa người dùng: " + error.message);
     }
   };
 
@@ -876,13 +942,33 @@ export default function App() {
       if (data.success) {
         return true;
       } else {
-        throw new Error(data.error);
+        throw new Error(data.error || "Không thể đổi mật khẩu");
       }
-    } catch (e: any) {
-      console.error("Reset password failed:", e);
-      throw e;
+    } catch (error: any) {
+      console.error("Error resetting password:", error);
+      throw error;
     }
   };
+
+  const updateUserRole = async (uid: string, email: string, newRole: 'user' | 'admin') => {
+    if (userRole !== 'admin' || !user) return;
+    
+    try {
+      await updateDoc(doc(db, 'authorized_emails', email.toLowerCase()), {
+        role: newRole
+      });
+      
+      await updateDoc(doc(db, 'users', uid), {
+        role: newRole
+      });
+      
+      await fetchAllUsers();
+    } catch (error: any) {
+      console.error("Error updating role:", error);
+      alert("Lỗi khi cập nhật vai trò: " + error.message);
+    }
+  };
+
 
   const changeOwnPassword = async (newPassword: string) => {
     if (!user) return;
@@ -4160,7 +4246,14 @@ export default function App() {
                             setAdminNewUserPassword('');
                             setAdminNewUserDisplayName('');
                           } catch (e: any) {
-                            alert(e.message);
+                            if (e.message.includes("Identity Toolkit API")) {
+                              const confirmEnable = confirm("Lỗi: Identity Toolkit API chưa được kích hoạt.\n\nBạn có muốn mở trang cấu hình Google Cloud để kích hoạt nó không?");
+                              if (confirmEnable) {
+                                window.open(`https://console.developers.google.com/apis/api/identitytoolkit.googleapis.com/overview?project=gen-lang-client-0132154992`, '_blank');
+                              }
+                            } else {
+                              alert(e.message);
+                            }
                           } finally {
                             setIsCreatingUser(false);
                           }
@@ -4191,6 +4284,28 @@ export default function App() {
                     </button>
                   </div>
 
+                  {authSyncError === 'API_DISABLED' && (
+                    <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-3">
+                      <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-[10px] font-bold text-amber-800">Cảnh báo: Đồng bộ hóa Authentication bị hạn chế</p>
+                        <p className="text-[9px] text-amber-600 mt-0.5">
+                          Identity Toolkit API chưa được kích hoạt. Danh sách dưới đây chỉ bao gồm người dùng đã lưu trong Firestore.
+                        </p>
+                        {apiActivationLink && (
+                          <a 
+                            href={apiActivationLink} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 mt-1 text-[9px] font-bold text-amber-700 hover:underline"
+                          >
+                            Kích hoạt API ngay <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs">
@@ -4218,7 +4333,9 @@ export default function App() {
                                       {u.displayName ? u.displayName.charAt(0).toUpperCase() : u.email.charAt(0).toUpperCase()}
                                     </div>
                                     <div>
-                                      <p className="font-bold text-slate-800 text-sm">{u.displayName || 'Chưa đặt tên'}</p>
+                                      <div className="flex items-center gap-2">
+                                        <p className="font-bold text-slate-800 text-sm">{u.displayName || u.email.split('@')[0]}</p>
+                                      </div>
                                       <p className="text-[10px] text-slate-400 font-medium">{u.email}</p>
                                     </div>
                                   </div>
@@ -4263,6 +4380,23 @@ export default function App() {
                                       title="Đổi mật khẩu"
                                     >
                                       <KeyRound className="w-4 h-4" />
+                                    </button>
+                                    <button 
+                                      onClick={() => updateUserRole(u.uid, u.email, u.role === 'admin' ? 'user' : 'admin')}
+                                      className={cn(
+                                        "p-2 rounded-lg transition-colors",
+                                        u.role === 'admin' ? "hover:bg-indigo-50 text-indigo-600" : "hover:bg-amber-50 text-amber-600"
+                                      )}
+                                      title={u.role === 'admin' ? "Hạ cấp xuống Thành viên" : "Thăng cấp lên Quản trị viên"}
+                                    >
+                                      {u.role === 'admin' ? <UserIcon className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                                    </button>
+                                    <button 
+                                      onClick={() => deleteUser(u.uid, u.email)}
+                                      className="p-2 hover:bg-rose-50 text-rose-500 rounded-lg transition-colors"
+                                      title="Xóa người dùng"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
                                     </button>
                                   </div>
                                 </td>

@@ -125,31 +125,13 @@ export class GeminiService implements TranslationService {
       envKeyName: envKey ? "Hệ thống (Environment)" : undefined
     };
 
+    // Only check for presence and basic format, no network call to save quota
     if (envKey && envKey.trim() !== "" && envKey !== "MY_GEMINI_API_KEY") {
-      try {
-        const ai = new GoogleGenAI({ apiKey: envKey });
-        // Simple validation call
-        await ai.models.generateContent({
-          model: "gemini-flash-latest",
-          contents: "hi"
-        });
-        results.envKey = true;
-      } catch (e) {
-        console.warn("Environment key validation failed:", e);
-      }
+      results.envKey = true;
     }
 
     if (manualKey && manualKey.trim() !== "") {
-      try {
-        const ai = new GoogleGenAI({ apiKey: manualKey });
-        await ai.models.generateContent({
-          model: "gemini-flash-latest",
-          contents: "hi"
-        });
-        results.manualKey = true;
-      } catch (e) {
-        console.warn("Manual key validation failed:", e);
-      }
+      results.manualKey = true;
     }
 
     return results;

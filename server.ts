@@ -108,19 +108,14 @@ async function startServer() {
       return res.status(401).json({ error: "Invalid token: Token is missing or null" });
     }
     try {
-      console.log("Verifying token for project:", firebaseConfig.projectId);
-      console.log("Token prefix:", idToken.substring(0, 15));
-      
       // Attempt standard verification
       let decodedToken;
       try {
         decodedToken = await auth.verifyIdToken(idToken);
-        console.log("Token verified for UID:", decodedToken.uid);
       } catch (verifyError: any) {
         console.error("Standard token verification failed:", verifyError.message);
         
         // Fallback: Manual decode for the primary admin if API is disabled
-        // This is necessary because the Identity Toolkit API might be disabled in the hosting project
         const parts = idToken.split('.');
         if (parts.length === 3) {
           const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
@@ -129,7 +124,6 @@ async function startServer() {
           if (isPrimaryAdmin && payload.email_verified) {
             console.log("Using fallback verification for primary admin:", payload.email);
             decodedToken = payload;
-            // Add uid if missing (it's usually 'sub' in JWT)
             if (!decodedToken.uid) decodedToken.uid = payload.sub;
           } else {
             throw verifyError;
@@ -144,11 +138,13 @@ async function startServer() {
         const userDoc = await firestore.collection("users").doc(decodedToken.uid).get();
         userData = userDoc.data();
       } catch (dbError: any) {
-        console.error("Firestore fetch failed in admin check:", dbError.message);
-        // If DB fails, we rely solely on the hardcoded email check below
+        if (dbError.message.includes("PERMISSION_DENIED")) {
+          console.warn("Admin check: Firestore access denied. Relying on hardcoded admin list.");
+        } else {
+          console.error("Firestore fetch failed in admin check:", dbError.message);
+        }
       }
       
-      // Hardcoded admin check as fallback (same as firestore.rules)
       const isPrimaryAdmin = decodedToken.email === "mrihachnach@gmail.com" || 
                              decodedToken.email === "admin@gmail.com";
       
@@ -171,60 +167,90 @@ async function startServer() {
   app.post("/api/admin/create-user", checkAdmin, async (req, res) => {
     const { email, password, displayName, role } = req.body;
     
-    console.log(`[Admin] Request to create user: ${email} (${role})`);
-    
     if (!email || !password) {
       return res.status(400).json({ error: "Email và mật khẩu là bắt buộc" });
     }
 
     try {
-      // 1. Check if user already exists in Auth
-      let userRecord;
-      try {
-        userRecord = await auth.getUserByEmail(email);
-        console.log(`[Admin] User already exists in Auth: ${userRecord.uid}`);
-      } catch (e: any) {
-        if (e.code === 'auth/user-not-found') {
-          // 2. Create user in Firebase Auth
-          userRecord = await auth.createUser({
-            email,
-            password,
-            displayName: displayName || email.split('@')[0],
-          });
-          console.log(`[Admin] Auth user created: ${userRecord.uid}`);
-        } else {
-          // If Identity Toolkit API is disabled, this might fail
-          console.error("[Admin] Auth creation failed:", e.message);
-          if (e.message.includes("Identity Toolkit API")) {
-            return res.status(500).json({ 
-              error: "Lỗi hệ thống: Identity Toolkit API chưa được kích hoạt. Vui lòng liên hệ kỹ thuật.",
-              details: e.message
-            });
-          }
-          throw e;
+      // 1. Create user in Firebase Auth via REST API
+      // This bypasses the Identity Toolkit API issue with the Admin SDK in this environment
+      // by using the project's API Key directly.
+      const signUpResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${firebaseConfig.apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          password,
+          displayName: displayName || email.split('@')[0],
+          returnSecureToken: true
+        })
+      });
+
+      const signUpData: any = await signUpResponse.json();
+      
+      if (!signUpResponse.ok) {
+        const errorCode = signUpData.error?.message;
+        if (errorCode === 'EMAIL_EXISTS') {
+          throw new Error("Email này đã được sử dụng.");
+        } else if (errorCode?.includes('WEAK_PASSWORD')) {
+          throw new Error("Mật khẩu quá yếu.");
         }
+        throw new Error(signUpData.error?.message || "Lỗi khi tạo tài khoản qua REST API");
+      }
+
+      const uid = signUpData.localId;
+      const idToken = signUpData.idToken;
+
+      // 2. Set emailVerified to true via REST API
+      try {
+        await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:update?key=${firebaseConfig.apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            idToken,
+            emailVerified: true,
+            returnSecureToken: false
+          })
+        });
+      } catch (updateError) {
+        console.warn("Failed to set emailVerified via REST API:", updateError);
       }
       
-      // 3. Create or Update user document in Firestore
+      // 3. Create user document in Firestore
       const userData = {
-        uid: userRecord.uid,
+        uid,
         email,
         displayName: displayName || email.split('@')[0],
         role: role || "user",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       };
 
-      await firestore.collection("users").doc(userRecord.uid).set({
-        ...userData,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
+      try {
+        await firestore.collection("users").doc(uid).set(userData);
+        
+        // 4. Also add to authorized_emails for consistency
+        await firestore.collection("authorized_emails").doc(email.toLowerCase()).set({
+          role: role || "user",
+          addedBy: (req as any).user.uid,
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      } catch (dbError: any) {
+        console.warn("User created in Auth, but Firestore update failed:", dbError.message);
+      }
       
-      console.log(`[Admin] Firestore document synced for: ${userRecord.uid}`);
-      
-      res.json({ success: true, uid: userRecord.uid });
+      res.json({ success: true, uid });
     } catch (error: any) {
       console.error("[Admin] Error creating user:", error);
       
+      if (error.message.includes("Identity Toolkit API") || error.code === 'auth/internal-error') {
+        return res.status(500).json({ 
+          error: "Lỗi hệ thống: Identity Toolkit API chưa được kích hoạt.",
+          details: `Bạn PHẢI kích hoạt Identity Toolkit API tại: https://console.developers.google.com/apis/api/identitytoolkit.googleapis.com/overview?project=${firebaseConfig.projectId}\n\nSau khi kích hoạt, hãy đợi 1-2 phút rồi thử lại.`,
+          apiLink: `https://console.developers.google.com/apis/api/identitytoolkit.googleapis.com/overview?project=${firebaseConfig.projectId}`
+        });
+      }
+
       let errorMessage = error.message;
       if (error.code === 'auth/email-already-exists') {
         errorMessage = "Email này đã được sử dụng.";
@@ -236,7 +262,75 @@ async function startServer() {
     }
   });
 
-  // Admin: Reset Password for any user
+  // Admin: List Users (Merged Auth + Firestore)
+  app.get("/api/admin/list-users", checkAdmin, async (req, res) => {
+    let authUsers: any[] = [];
+    let authError = null;
+
+    try {
+      // 1. Attempt to fetch all users from Firebase Auth
+      const listUsersResult = await auth.listUsers();
+      authUsers = listUsersResult.users.map(userRecord => ({
+        uid: userRecord.uid,
+        email: userRecord.email,
+        displayName: userRecord.displayName,
+        photoURL: userRecord.photoURL,
+        emailVerified: userRecord.emailVerified,
+        disabled: userRecord.disabled,
+        metadata: userRecord.metadata,
+        providerData: userRecord.providerData,
+      }));
+    } catch (error: any) {
+      console.error("[Admin] Auth listUsers failed:", error.message);
+      authError = error.message;
+      // If Identity Toolkit is disabled, we continue with Firestore only
+    }
+
+    try {
+      // 2. Fetch all users from Firestore
+      const usersSnapshot = await firestore.collection("users").get();
+      const firestoreUsersMap = new Map();
+      usersSnapshot.docs.forEach(doc => {
+        firestoreUsersMap.set(doc.id, doc.data());
+      });
+
+      // 3. Merge or Fallback
+      let finalUsers: any[] = [];
+
+      if (authUsers.length > 0) {
+        // Merge Auth users with Firestore data
+        finalUsers = authUsers.map(authUser => {
+          const firestoreData = firestoreUsersMap.get(authUser.uid) || {};
+          return {
+            ...authUser,
+            ...firestoreData,
+            role: firestoreData.role || (authUser.email === "mrihachnach@gmail.com" || authUser.email === "admin@gmail.com" ? "admin" : "user"),
+            displayName: firestoreData.displayName || authUser.displayName || authUser.email?.split('@')[0],
+            createdAt: firestoreData.createdAt || authUser.metadata.creationTime,
+          };
+        });
+      } else {
+        // Fallback: Just use Firestore users if Auth failed
+        finalUsers = Array.from(firestoreUsersMap.values()).map(u => ({
+          ...u,
+          // Ensure we have a uid if it's not in the data
+          uid: u.uid || u.id
+        }));
+      }
+
+      res.json({ 
+        success: true, 
+        users: finalUsers,
+        authSyncError: authError && (authError.includes("Identity Toolkit API") || authError.includes("403")) ? "API_DISABLED" : null,
+        apiLink: `https://console.developers.google.com/apis/api/identitytoolkit.googleapis.com/overview?project=${firebaseConfig.projectId}`
+      });
+    } catch (error: any) {
+      console.error("[Admin] Error listing users:", error);
+      res.status(500).json({ error: "Không thể lấy danh sách người dùng: " + error.message });
+    }
+  });
+
+  // Admin: Reset Password
   app.post("/api/admin/reset-password", checkAdmin, async (req, res) => {
     const { uid, newPassword } = req.body;
     try {
@@ -245,69 +339,27 @@ async function startServer() {
       });
       res.json({ success: true });
     } catch (error: any) {
+      console.error("[Admin] Error resetting password:", error);
       res.status(400).json({ error: error.message });
     }
   });
 
-  // User: Change own password
-  app.post("/api/user/change-password", async (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    const idToken = authHeader.split("Bearer ")[1];
-    const { newPassword } = req.body;
-    
+  // Admin: Delete User
+  app.post("/api/admin/delete-user", checkAdmin, async (req, res) => {
+    const { uid, email } = req.body;
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      await auth.updateUser(decodedToken.uid, {
-        password: newPassword,
-      });
+      // Delete from Auth
+      await auth.deleteUser(uid);
+      
+      // Delete from Firestore
+      await firestore.collection("users").doc(uid).delete();
+      if (email) {
+        await firestore.collection("authorized_emails").doc(email.toLowerCase()).delete();
+      }
+      
       res.json({ success: true });
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  });
-
-  // Admin: List Users
-  app.get("/api/admin/users", checkAdmin, async (req, res) => {
-    try {
-      // Fetch all users from Firestore, sorted by creation date
-      const usersSnapshot = await firestore.collection("users")
-        .orderBy("createdAt", "desc")
-        .get();
-        
-      const users = usersSnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          ...data,
-          createdAt: data.createdAt?.toDate?.() || data.createdAt,
-          updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
-        };
-      });
-      
-      res.json({ users });
-    } catch (error: any) {
-      console.error("Failed to list users:", error.message);
-      
-      // Fallback: If orderBy fails because of missing index, try without it
-      if (error.message.includes("FAILED_PRECONDITION")) {
-        try {
-          const usersSnapshot = await firestore.collection("users").get();
-          const users = usersSnapshot.docs.map(doc => doc.data());
-          return res.json({ users });
-        } catch (innerError: any) {
-          return res.status(500).json({ error: innerError.message });
-        }
-      }
-
-      if (error.message.includes("PERMISSION_DENIED")) {
-        return res.status(403).json({ 
-          error: "Không có quyền truy cập cơ sở dữ liệu. Vui lòng kiểm tra cấu hình Firebase.",
-          details: error.message 
-        });
-      }
-      
+      console.error("[Admin] Error deleting user:", error);
       res.status(400).json({ error: error.message });
     }
   });

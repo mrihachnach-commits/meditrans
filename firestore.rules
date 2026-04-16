@@ -14,6 +14,14 @@ service cloud.firestore {
     //   - displayName: string (optional) - The user's display name.
     //   - photoURL: string (optional) - The user's profile picture URL.
     //   - createdAt: timestamp (optional) - When the user account was created.
+    //   - role: string (optional) - 'admin' or 'user'
+    //
+    // Collection: authorized_emails
+    // Document ID: email (string)
+    // Fields:
+    //   - role: string (required) - 'admin' or 'user'
+    //   - addedBy: string (optional) - UID of the admin who added this
+    //   - createdAt: timestamp (optional)
     //
     // Collection: apiKeys
     // Document ID: keyId (Auto-generated)
@@ -74,12 +82,13 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUser(data) {
-      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'createdAt', 'role']) &&
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'createdAt', 'role', 'updatedAt']) &&
              data.uid is string && data.uid.size() > 0 &&
              data.email is string && isValidEmail(data.email) &&
              (data.displayName == null || (data.displayName is string && data.displayName.size() < 100)) &&
              (data.photoURL == null || (data.photoURL is string && isValidUrl(data.photoURL))) &&
-             (data.createdAt == null || data.createdAt is timestamp);
+             (data.createdAt == null || data.createdAt is timestamp) &&
+             (data.updatedAt == null || data.updatedAt is timestamp);
     }
 
     function isValidApiKey(data) {
@@ -93,8 +102,8 @@ service cloud.firestore {
 
     function isValidTranslation(data) {
       return hasOnlyAllowedFields(['content', 'status', 'updatedAt']) &&
-             data.content is string && data.content.size() < 100000 && // Limit size to 100KB per page
-             data.status in ['success', 'error'] &&
+             data.content is string && data.content.size() < 500000 && // Limit size to 500KB per page
+             data.status in ['success', 'error', 'loading'] &&
              (data.updatedAt == null || data.updatedAt is timestamp);
     }
 
@@ -104,9 +113,15 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
       allow create: if isOwner(userId) || isAdmin();
       allow update: if (isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin();
       allow delete: if isAdmin();
+    }
+
+    match /authorized_emails/{email} {
+      allow read: if isAuthenticated() && (request.auth.token.email == email || isAdmin());
+      allow write: if isAdmin();
     }
 
     match /apiKeys/{keyId} {
@@ -125,7 +140,7 @@ service cloud.firestore {
       
       match /pages/{pageNum} {
         allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId) && isValidTranslation(request.resource.data);
+        allow write: if (isOwner(userId) || isAdmin()) && isValidTranslation(request.resource.data);
       }
     }
   }
